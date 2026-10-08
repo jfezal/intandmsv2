@@ -4,6 +4,12 @@
 
 **Date:** 2026-10-08
 
+## On-premise engineering constraints
+
+Confirmed: customer-owned Ubuntu/Linux servers/VMs, offline Docker Compose installation, local users/password security/sessions, local filesystem and NAS/SMB/NFS, PostgreSQL FTS default, local Tesseract/previews/workers, and no outbound telemetry. LDAP/AD, OIDC, S3, and OpenSearch are optional; Keycloak/cloud/Internet are not prerequisites. Every implementation/release must preserve the disconnected baseline.
+
+Bundle frontend/native/runtime assets; no CDN/public ACME/activation dependencies. Maintain customer-local health, capacity, offline scan-signature update, backup/restore, and administration runbooks. External-reference sources must never be modified; preserve history using approved immutable snapshots.
+
 ## 1. Repository structure recommendation
 
 The following is a **planned structure**, not directories or files already implemented:
@@ -41,7 +47,7 @@ intandmsv2/
 │   │           └── ports/
 │   ├── database/               # Prisma schema, SQL migrations, repositories
 │   ├── storage/                # adapters implementing core storage ports
-│   ├── identity/               # OIDC/session integration adapters
+│   ├── identity/               # local credentials/sessions, optional LDAP/OIDC
 │   ├── processing/             # sandbox processor integration adapters
 │   ├── search/                 # index/query adapters
 │   ├── jobs/                   # queue and outbox infrastructure adapters
@@ -65,6 +71,9 @@ intandmsv2/
 │   ├── TECHNOLOGY_STACK.md
 │   ├── DEVELOPMENT_STANDARDS.md
 │   ├── DEVELOPMENT_ROADMAP.md
+│   ├── ON_PREMISE_DEPLOYMENT.md
+│   ├── STORAGE_ARCHITECTURE.md
+│   ├── AUTHENTICATION_ARCHITECTURE.md
 │   ├── adr/                    # proposed -> accepted/superseded decisions
 │   ├── api/
 │   ├── security/
@@ -96,8 +105,8 @@ Dependency direction: API/worker composition -> application/domain and adapters;
 - Provide `.env.example` with harmless placeholders after implementation. Never provide working passwords, tokens, or production endpoints as defaults.
 - Ignore local environment/secret files and include secret scanning in approved CI.
 - Keep secrets out of image layers, Git history, logs, telemetry, and frontend bundles; Vite-exposed values are public.
-- Document ownership and rotation of DB, storage, IdP, queue, connector, encryption, and signing credentials.
-- Prefer a reviewed secret manager; if encrypted secret records are needed, store the key outside the database and define rotation/recovery.
+- Document DB, storage, local service credentials, optional IdP, queue, connectors, encryption, and signing ownership/rotation.
+- Use customer-local secret provisioning such as restricted files/Compose-mounted secrets; do not require a hosted secret manager. Encrypted secret records keep their key outside the DB and need tested local rotation/recovery.
 - Development/staging/production must not share credentials or real customer document fixtures.
 
 ## 4. Security and policy conventions
@@ -109,7 +118,7 @@ Dependency direction: API/worker composition -> application/domain and adapters;
 - Use restrictive CSP, secure cookies, CSRF validation, explicit CORS policy, and safe output encoding.
 - Disable unsafe inline serving of active formats and avoid raw HTML rendering unless there is a reviewed sanitization boundary.
 - Do not expand ZIP/archive ingestion or external-network access without an approved threat model.
-- Retention/connector deletion paths require separate policy review, dry-run, hold checks, and explicit execution authorization.
+- Retention/managed-content deletion needs policy review, dry-run, hold checks, and explicit authorization. Reference-source modification/deletion is prohibited, not an approvable routine connector operation.
 - Sanitize untrusted strings in logs and audit display to prevent injection; avoid logging content merely to aid debugging.
 
 ## 5. Persistence, migrations, and concurrency
@@ -146,11 +155,11 @@ Test domain rules, permission evaluation, metadata validation, workflow transiti
 
 ### Integration tests
 
-Exercise real approved PostgreSQL, queue, object-store adapter, and search engine behavior. Test constraints, migrations, row locks, outbox publish crashes, duplicate delivery, queue reconstruction, stale index events, permission revocation, object promotion failures, and source changes during import. Mocks alone cannot prove distributed consistency.
+Exercise real PostgreSQL/FTS, local queue, filesystem, and approved NAS/SMB/NFS fixtures; optional S3/OpenSearch/LDAP/OIDC have separate suites. Test constraints, locks, outbox crashes, duplicate delivery, queue recovery, stale projections, live revocation, staged-file publication, missing/wrong mounts, source changes during read, and read-only source integrity. Mocks cannot prove filesystem/share consistency.
 
 ### End-to-end tests
 
-Cover login/logout/session revocation, upload/quarantine/scan, folder permissions/moves, version creation/restore, authorized search, previews/downloads, approvals, and retention dry-run/holds. Use synthetic fixtures and isolated test principals.
+Cover local bootstrap/login/logout/recovery/lockout/session revocation, uploads/quarantine/scans, folder policies/moves, version restore, default FTS, previews/downloads, workflow, and retention dry-run/holds. Repeat baseline install/reboot/core journeys with Internet blocked, no optional services, bundled assets, and synthetic data. Offline server operation is not permission to bypass authentication/TLS.
 
 ### Security tests
 
@@ -158,7 +167,7 @@ Maintain negative tests for IDOR/BOLA, tenant crossover if applicable, role esca
 
 ### Reliability and operational tests
 
-Test dependency outages, processor timeout/crash, storage-full conditions, canceled/stale jobs, recovery reconciliation, backup restore, and deployment compatibility. Assert that failures cannot publish unscanned files, lose required audit evidence, or purge held content.
+Test outages, processor crashes, full bytes/inodes, share disconnect/reconnect, canceled/stale jobs, mount fallthrough prevention, signature-age policy, verified offline update, isolated backup restore, and compatible upgrades. Failures cannot expose unscanned/changed source bytes, lose audit, or purge holds. Confirm no outbound telemetry/asset/activation calls with egress-blocked network evidence.
 
 ### Performance and accessibility
 
@@ -175,6 +184,7 @@ Coverage thresholds are proposed after the foundation baseline; no arbitrary glo
 - Require review for authentication, authorization, storage, audit, retention, dependencies, schema changes, and deployment controls; arrange independent review for high-risk work where staffing permits.
 - Proposed CI gates: formatting, lint, boundary checks, typecheck, unit/integration tests, frontend build, API contract check, migration tests, dependency/secret/container scans, and applicable end-to-end/security tests.
 - CI jobs use least-privilege GitHub tokens, pinned actions, isolated environments, and no production secrets for fork/PR checks.
+- GitHub CI is development tooling, not an installed customer dependency; checks and release verification must be locally runnable with preloaded tools/images. Never upload customer files or diagnostics automatically.
 - Track findings and time-bounded risk acceptance; do not hide vulnerabilities by disabling scans globally.
 - Branch protections, required checks, approval rules, and CI files are recommendations, not changes performed by this task.
 

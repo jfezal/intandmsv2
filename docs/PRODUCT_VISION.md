@@ -6,13 +6,28 @@
 
 **Owner:** human Product Owner
 
-**Document status:** proposal for review, 2026-10-08
+**Document status:** revised proposal for review, 2026-10-08; on-premise constraints confirmed by the Product Owner.
 
 ## Vision
 
-Deliver a secure, maintainable, enterprise-grade document management platform that enables authorized users to organize, discover, review, and govern documents across managed repositories and approved external storage systems.
+Deliver a secure, maintainable, **on-premise-first** enterprise document management platform that enables authorized users to organize, discover, review, and govern documents across managed repositories and read-only external-reference sources.
 
 The platform should make document ownership, access, version history, workflow state, and lifecycle decisions explainable and auditable. Operational simplicity and recoverability take precedence over premature architectural complexity.
+
+The primary environment is customer-owned physical servers or virtual machines running Ubuntu/Linux, accessed over private LAN/intranet. IntanDMS V2 is **not a cloud-first SaaS platform**. Core capabilities must work without Internet access, cloud subscriptions, or a third-party identity provider. All telemetry stays inside customer infrastructure.
+
+## Confirmed on-premise baseline
+
+- Local users/authentication by default, with secure password hashing, sessions, account lockout/rate limiting, RBAC, and auditing.
+- Optional LDAP/Windows Active Directory integration; OIDC optional; Keycloak is never required.
+- Local filesystem, NAS/SMB, and NFS support; S3-compatible storage optional.
+- Managed and external-reference modes; external-reference sources must not be modified.
+- PostgreSQL Full-Text Search by default behind a search abstraction; OpenSearch optional.
+- Local Tesseract OCR, local previews, and local background workers, with no mandatory external API calls.
+- Docker Compose-based offline installation, backup/restore, storage capacity planning, health monitoring, and system administration.
+- Secure server-side authorization, protected filesystem/share paths, isolated processing, and comprehensive audit logs.
+
+These are confirmed requirements, not choices awaiting reconfirmation. Detailed implementation and business rules remain proposals. This revision supersedes the original cloud-service/IdP/storage/search defaults.
 
 ## Confirmed scope
 
@@ -20,7 +35,7 @@ The Product Owner requested:
 
 1. Document repository management.
 2. File and folder management.
-3. NAS, SMB, and S3 external-storage connectors.
+3. Local filesystem, NAS/SMB, NFS, and optional S3-compatible storage connectors.
 4. Document metadata and classification.
 5. Full-text search and indexing.
 6. OCR integration.
@@ -37,7 +52,7 @@ The Product Owner requested:
 
 Confirmed engineering principles include modularity, API-first design, migrations, secure defaults, structured errors, automated testing, Docker readiness, observability, environment configuration, no hardcoded credentials, and documentation.
 
-These capabilities do not confirm detailed business behavior. Approval sequences, retention durations, tenant boundaries, supported file types, languages, identity sources, regulatory obligations, or deployment scale remain unknown.
+These capabilities do not confirm detailed business behavior. Approval sequences, retention durations, organization boundaries, supported file types, languages, optional directory mappings, regulatory obligations, or deployment scale remain unknown. Local authentication and offline on-premise operation are no longer open questions.
 
 ## Proposed users and responsibilities
 
@@ -60,6 +75,8 @@ No fixed role names, approval limits, or separation-of-duty exceptions are confi
 - Access and lifecycle operations can be reconstructed from audit records.
 - External systems integrate through explicit, versioned contracts.
 - Operators can detect processing failures, restore data, and measure indexing freshness.
+- Customers retain control of credentials, documents, processing, telemetry, backups, and updates inside their infrastructure.
+- A verified installation and update bundle supports disconnected sites without runtime downloads or online activation.
 - Growth in document volume can be addressed by scaling processing independently of the API.
 
 Success metrics require approved baselines: user counts, repository size, ingestion volume, search latency, OCR turnaround, availability, recovery objectives, and operating budget. This proposal supplies no invented numerical commitments.
@@ -85,12 +102,12 @@ Additional capabilities require explicit prioritization and a documented risk as
 
 ## Discovery priorities
 
-1. Confirm intended organizations, installation model, and tenant isolation needs.
-2. Confirm identity provider, account lifecycle, and enterprise directory requirements.
+1. Define customer installation sizing, organization/repository boundaries, and operations ownership within the confirmed on-premise model.
+2. Define local account lifecycle/recovery and optional directory integration; no IdP is required.
 3. Define repository/folder access semantics and administrative powers.
-4. Inventory file formats, languages, scan quality, source systems, and ingestion paths.
+4. Inventory file formats, languages, scan quality, local/NAS/SMB/NFS sources, reference-snapshot policy, and ingestion paths.
 5. Define workflow, classification, retention, legal hold, and disposition policies.
-6. Establish workload, security, compliance, data residency, and disaster-recovery expectations.
+6. Establish workload, offline update procedures, customer-local security/monitoring, capacity, and disaster-recovery expectations.
 7. Agree the first useful release and what is explicitly deferred.
 
 See [Requirements](REQUIREMENTS.md) for tracked decisions and proposed acceptance criteria.

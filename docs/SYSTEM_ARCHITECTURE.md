@@ -2,35 +2,38 @@
 
 **IntanDMS V2 — Sisi Awan Technologies Sdn Bhd**
 
-**Status:** proposed for Product Owner review; no implementation authorized.
+**Status:** revised on-premise proposal for review; product constraints confirmed, no implementation authorized.
 
 **Date:** 2026-10-08
 
 ## 1. Executive recommendation
 
-Build an **API-first modular monolith with independently deployed background workers**. Keep business state in PostgreSQL, binaries in managed storage, and indexes/queues as derived infrastructure. Use centralized identity with consistent resource authorization.
+Build an **on-premise API-first modular monolith with independently deployed local workers** on customer-owned Ubuntu/Linux physical servers or VMs. Keep business state and default full-text search in PostgreSQL; store managed binaries on local filesystem or approved DMS-owned shares. Default to local users, secure password hashing, opaque sessions, and consistent server-side RBAC.
+
+**Confirmed correction:** IntanDMS V2 is not cloud-first SaaS. It must work fully without Internet, cloud services, external APIs, or third-party identity providers. LDAP/AD, OIDC, S3-compatible storage, and OpenSearch are optional. Keycloak is not required. Docker Compose installation, assets, processing, updates, monitoring, and backups must support disconnected customer environments; telemetry never leaves customer infrastructure.
 
 This balances enterprise controls and maintainability without the premature cost of microservices. API and workers may share application/domain packages while running in separate processes and security boundaries. Document processing has a narrower trust boundary than the API.
 
 The repository was empty when inspected. This proposal is a greenfield baseline, not an assessment of existing application architecture. V1 code reuse, data migration, and business compatibility are not assumed.
 
-Major recommendations require D-01 through D-11 review in [Requirements](REQUIREMENTS.md). In particular, tenancy and authorization semantics must precede initial data-model migrations.
+Detailed recommendations require D-01 through D-11 review in [Requirements](REQUIREMENTS.md). Confirmed defaults are not reopened as choices. Internal organization boundaries, permission semantics, and local account policy must be resolved before initial migrations. This revision supersedes the initial mandatory OIDC/S3/OpenSearch direction.
 
 ## 2. Logical topology
 
 ```text
-User browser                         Integration client
-     | HTTPS, same-origin                 | OAuth access token
+Customer LAN browser                 Intranet integration client
+     | HTTPS, same-origin                 | scoped local service credential
      v                                    v
 Reverse proxy / web assets --------> NestJS/Fastify REST API
                                            |
-          Enterprise OIDC IdP <------------+ (login/session flow)
+            Local authentication <--------+ (password/session flow)
                                            |
                   +------------------------+----------------------+
                   |                        |                      |
-             PostgreSQL              Binary storage          OpenSearch
-         business state, ACL,         managed S3,            derived index
-         sessions, audit, outbox       approved adapters
+             PostgreSQL              Managed filesystem     Read-only sources
+         business state, RBAC,        local / NAS mounts     NAS / SMB / NFS
+         sessions, audit, outbox,     immutable versions     snapshot ingestion
+         text chunks / FTS
                   |
              Outbox dispatcher ----> BullMQ / Valkey
                                            |
@@ -41,17 +44,18 @@ Reverse proxy / web assets --------> NestJS/Fastify REST API
                 isolated processors
           scan / extract / OCR / render
 
-All services -> redacted logs, metrics, traces, alerts
-Durable systems -> encrypted off-host backup and tested restoration
+All services -> customer-local redacted logs, metrics, traces, alerts
+Durable systems -> customer-controlled backup and tested restoration
+Optional adapters: LDAP/AD, OIDC, S3-compatible storage, OpenSearch
 ```
 
-This is a logical dependency map, not a confirmed VPS layout. IdP, object storage, and telemetry may be external approved services. The API never sends unapproved content to external processors.
+This is a logical dependency map, not a confirmed server sizing/layout. Baseline services run inside customer infrastructure. Optional adapters are disabled by default and absent from baseline startup requirements. No public endpoint, CDN, hosted observability, remote license check, or external processor is needed.
 
 ## 3. Module boundaries
 
 Proposed backend modules:
 
-- **Identity and sessions:** OIDC login, session lifecycle, identity mappings, integration principals.
+- **Identity and sessions:** local password verification/account lifecycle, session security, optional directory/OIDC adapters, integration principals.
 - **Authorization:** role assignments, scoped grants, policy evaluation, effective access calculation.
 - **Organizations/workspaces:** optional organization/tenant boundary, dependent on D-01.
 - **Repositories and folders:** hierarchy, ownership, moves, lifecycle state.
@@ -77,7 +81,8 @@ Business workflows remain in application/domain services, not controllers, React
 Use PostgreSQL constraints and transactions as the primary integrity mechanism. The following are **candidate entities**, not an approved schema:
 
 - `organizations` if D-01 requires an explicit organization/tenant entity.
-- `users` linked by the immutable OIDC issuer/subject pair; email is not an identity key.
+- `users` with stable internal IDs/account state; local `password_credentials` with algorithm/parameters/hash, credential-change timestamps, and reset/lockout state.
+- `identity_links` for optional directory immutable identifiers or OIDC issuer/subject; never auto-link accounts by email/display name.
 - `groups`, `memberships`, `roles`, `permissions`, `role_permissions`, and scoped `role_assignments`.
 - `repositories`, `folders` with parent links and repository boundary.
 - `documents` with stable identity, current version pointer, lifecycle state, and concurrency revision.
@@ -89,9 +94,11 @@ Use PostgreSQL constraints and transactions as the primary integrity mechanism. 
 - `retention_policies`, policy versions, assignments, proposed `legal_holds`, disposition requests, and execution records.
 - `audit_events` and controlled export/checkpoint records.
 - `sessions` with hashed opaque token identifiers, expiry, and revocation state.
+- scoped local service-token digests, expiry/revocation, and permitted principals; security/rate-limit state as appropriate.
+- bounded extracted-text chunks and `tsvector` search projections, language/analyzer versions, and projection revision.
 - connector checkpoints/source mappings and index projection watermarks.
 
-One repository has folders/documents; one document has many immutable versions; a version references managed content and derived artifacts. Workflow instances pin their definition version and target document version. Audit/job history must survive ordinary document soft deletion.
+One repository has folders/documents; one document has many immutable versions. Each accepted binary version references managed immutable bytes, including snapshots captured from read-only external sources. Source mappings record provenance, not a mutable substitute for historical content. Workflow instances pin definition/document versions. Audit/job history survives ordinary soft deletion.
 
 ### 4.2 Data rules
 
@@ -110,9 +117,9 @@ One repository has folders/documents; one document has many immutable versions; 
 
 ### 4.3 Tenant boundary decision
 
-Do not claim tenant safety before D-01 is resolved. If shared multi-tenancy is approved, propagate `organization_id` through tenant-owned tables, composite foreign keys/uniqueness, job payloads, indexes, storage namespaces, and authorization contexts. Validate tenant context from a trusted session/principal, never the request body alone.
+Recommend one customer per installation; shared cloud SaaS is not the target. D-01 must settle whether multiple internal organizations are needed. If so, propagate `organization_id` through scoped tables, composite foreign keys/uniqueness, jobs, search, storage namespaces, and authorization. Validate context from a trusted session/principal, never the request body alone. Do not claim isolation before testing it.
 
-Consider PostgreSQL RLS as defense in depth, with transaction-local context, least-privilege roles, and tests for connection-pool reuse and service/admin bypass. RLS does not protect object storage, search, queues, or caches by itself. If one organization per deployment is chosen, repository-scoped authorization remains mandatory.
+Consider PostgreSQL RLS as defense in depth if organization separation requires it, with transaction-local context, least-privilege roles, and connection-pool/service-bypass tests. RLS does not protect filesystem, optional external search, queues, or caches by itself. Repository authorization is mandatory regardless of installation boundaries.
 
 ### 4.4 Migrations and recovery
 
@@ -120,25 +127,25 @@ Every schema change is a versioned migration. Production schema auto-synchroniza
 
 Separate schema-owner/migration credentials from runtime credentials. Runtime roles must not have unrestricted DDL privileges. Changes affecting audit, holds, tenant boundaries, or constraints need explicit risk review.
 
-Backup strategy must include PostgreSQL full backups and WAL/PITR where approved RPO requires it. Coordinate recovery with immutable object inventory and lifecycle deletion records. A database snapshot alone cannot recover missing binaries.
+Backup strategy includes customer-local PostgreSQL backups/WAL where approved RPO requires it, coordinated with filesystem/share snapshot inventory and deletion records. A database snapshot cannot recover missing binaries. See [On-premise deployment](ON_PREMISE_DEPLOYMENT.md) for consistent restore sequencing and offline delivery.
 
 ## 5. Storage architecture
 
 ### 5.1 Managed storage
 
-Place originals and derivatives in private S3-compatible storage. Use opaque object keys derived from server-controlled object/version IDs and, if required, organization boundaries. User filenames must never control a filesystem path or object namespace.
+Use **local filesystem storage by default**, with supported NAS/SMB/NFS adapters and optional S3-compatible storage behind a common interface. Managed originals/versions/snapshots/derivatives live under dedicated administrator-approved roots; quarantine and scratch are separate. User filenames are display metadata, never paths. Host operators mount network shares; ordinary application containers have no mount privilege.
 
-Logical application versions are distinct from bucket versioning. Bucket versioning is a recovery tool, not the application version model. Encrypt at rest and in transit with approved key ownership/rotation; test provider-specific capabilities rather than assuming them.
+Logical versions refer to immutable stored bytes; filesystem/share snapshots and optional bucket versioning are recovery mechanisms, not the version model. Use staged writes, checked sizes/hashes, exclusive non-overwriting publication, and durability operations appropriate to the provider. Validate same-filesystem rename/fsync and share failure semantics; PostgreSQL and file writes are not atomic together. Encrypt at rest/in transit under customer policy with local key recovery.
 
-Separate original, quarantine, and derivative namespaces and credentials as needed. Default to application-authorized downloads; very short-lived presigned URLs are an optional optimization only after review of revocation windows and leakage risks. URLs are bearer capabilities and cannot generally be revoked instantly.
+Serve content through authorized API streaming, never a public static root or raw share URL. Workers receive narrow inputs, not repository-wide credentials. Presigned URLs exist only for optional S3 and require revocation-window review. See [Storage architecture](STORAGE_ARCHITECTURE.md) for root containment, mount health, ownership, reference snapshots, and capacity accounting.
 
 ### 5.2 Ingestion transaction boundary
 
-The database and object store have no shared transaction. Proposed upload saga:
+The database and filesystem/share/optional object store have no shared transaction. Proposed upload saga:
 
 1. Authorize contributor and destination; validate intended size/type against policy; reserve an upload session with expiry and idempotency identity.
-2. Stream to a server-generated quarantine key or use a narrowly scoped direct-upload capability if explicitly approved. Enforce byte limits even when `Content-Length` is absent or false.
-3. Verify actual size, content signature/MIME, and a cryptographic checksum. Multipart ETags are not reliably content hashes.
+2. Stream to a server-generated exclusive quarantine file with space checks and byte limits even when `Content-Length` is absent/false. Direct S3 upload is optional and not the baseline.
+3. Verify actual size, content signature/MIME, and cryptographic checksum over received bytes. Multipart ETags on optional S3 are not reliably content hashes.
 4. Register a pending immutable version, its storage reference, audit event, and processing outbox entry in one PostgreSQL transaction. It is not yet readable as an accepted document version.
 5. Scan content in an isolated processor. Promote the object/state using idempotent transitions only after required checks pass. Copy/promotion and DB updates are reconcilable, not falsely atomic.
 6. Publish the accepted current-version pointer in a transaction, recording audit and next-stage jobs. Extraction/preview failures must be visible independently of upload acceptance.
@@ -146,27 +153,29 @@ The database and object store have no shared transaction. Proposed upload saga:
 
 Default scan outage policy is fail-closed for visibility: leave the file pending/quarantined, alert, and retry. Administrative bypass would require an explicit policy and audit. Some dangerous but malware-free files remain unsafe for inline rendering.
 
-### 5.3 NAS and SMB
+### 5.3 NAS, SMB, and NFS
 
 Use a connector boundary separate from interactive API file access:
 
 - Restrict configuration to approved roots/endpoints; users do not supply arbitrary hosts, shares, or mount paths.
 - Keep connector credentials in an approved secret store or encrypted secret mechanism with the key outside the database.
 - Use SMB3 with approved encryption/signing settings; disable obsolete/insecure protocol options.
+- Validate NFSv4 identity mapping/export access, root squashing, mount reliability, and approved transport protection. Do not assume NFS on a private LAN is authenticated/encrypted adequately.
 - Run mounts/connector agents under dedicated OS accounts with minimal network and filesystem scope. If mounting requires elevated privileges, perform it outside ordinary API/processing containers under operator control.
 - Enforce path containment, reject traversal, and prevent symlink/TOCTOU escape with OS-level containment and safe path operations; string-prefix checks alone are insufficient.
 - Track source identity, modification markers, size, hashes where available, and scan checkpoints.
 - Compare pre/post-copy source markers; detect source changes during read and retry rather than certify a mixed version.
 - Perform periodic full reconciliation; timestamps or event notifications alone are not reliable change detection.
 - Source errors/offline shares do not imply source deletions. Use explicit tombstone confirmation and policy.
+- Validate expected mount identity before every transfer and monitor it continuously; a missing mount must not cause writes into an underlying local directory. Managed writes fail closed on mount mismatch/full/read-only/unavailable states.
 
 ### 5.4 Connector ownership modes
 
-- **Import:** read source, copy into managed immutable storage, retain provenance. Recommended initial NAS/SMB mode.
-- **Reference:** source remains authoritative. Fast access may be possible, but permissions, mutation, outage, and retention guarantees are weaker. To guarantee historical versions, capture managed snapshots; otherwise expose the limitation explicitly.
-- **Managed/write:** DMS owns approved paths or bucket namespace and writes under defined policies. Requires separate approval, concurrency semantics, and recovery procedures.
+- **Managed:** DMS owns a dedicated approved local/share/optional S3 namespace. Authorized writes create immutable versions; lifecycle deletion is policy-controlled.
+- **External-reference:** DMS discovers source content read-only, never modifies/renames/deletes it or writes sidecars/locks. Capture a stable read-only source into managed quarantine, scan those exact bytes, and preserve immutable snapshots for accepted historical versions. New source changes create new snapshots/versions; missing/unreachable sources produce audited state, not history deletion.
+- **Import:** an explicit read-only ingestion operation into managed storage; source provenance is retained. It is not permission to mutate the source.
 
-No remote deletion, remote renaming, or bidirectional sync is authorized by this proposal. S3 event notifications are optional accelerators, not a substitute for reconciliation. External credentials must never be exposed to browsers.
+Reference mode and versioning are required together; a mutable source path alone cannot guarantee past versions. Snapshot-copy permission/retention must be reviewed under D-04. If copies are forbidden and the source lacks verified immutable history, resolve that conflict before promising historical downloads/approvals. Managed-share writes are limited to declared DMS roots; no mutation of reference roots is permitted. S3 is optional; no bucket is needed for baseline operation.
 
 ## 6. OCR, preview, and search architecture
 
@@ -188,23 +197,27 @@ accepted original -> isolated preview generation -> safe derivative
 
 Each stage has explicit pending/running/succeeded/failed/quarantined state, attempt records, timestamps, and engine/profile version. Failures do not erase originals or silently change previous successful artifacts. Reprocessing writes a new artifact generation and only publishes a completed generation.
 
-Use native text extraction where reliable; OCR is conditional on format/page content and policy, not blindly applied to every file. Record language, page coverage, detected failures, and confidence where the engine actually provides meaningful values. Validate quality on representative business documents; OCR output is not guaranteed evidence of the original text.
+Use local native extraction where reliable and **local Tesseract** OCR where needed. Bundle engines, language data, renderers, fonts, and any local scanner signatures; never download them at runtime or fetch document-linked remote resources. Record page coverage, language, failures, and confidence only where meaningful. Validate accuracy on business samples; OCR text is not guaranteed evidence of the original.
 
 Apply CPU, memory, wall-clock, byte, archive-expansion, page, pixel, and temporary-disk limits. Disable processor egress by default and give it access only to the required input/output. Treat parser libraries and conversion engines as patch-sensitive attack surfaces. Never interpolate filenames into shell commands.
+
+Offline security maintenance uses verified customer-local signature/package updates. Define maximum signature age, warnings, and ingestion fail-closed policy under D-05/D-09; disconnected operation must not silently disable malware scanning or pretend bundled signatures remain current forever.
 
 Serve generated previews on a separate controlled origin or appropriately sandboxed context with restrictive CSP. Do not embed untrusted HTML/SVG or active office content under the authenticated application origin. Preview caches and range endpoints need the same authorization as original downloads.
 
 ### 6.2 Index projection
 
-Index stable document/version IDs, approved metadata, extracted text, language/analyzer context, lifecycle state, organization/repository scope, projection revision, and proposed permission visibility tokens. Avoid indexing secrets or unnecessary personal information.
+**Default: PostgreSQL Full-Text Search.** Store bounded extracted-text chunks with version/page/offset provenance and `tsvector` fields, supported language configurations, and GIN indexes. Chunking bounds vector size/lexeme positions and large-document work. Use explicit parameterized SQL migrations/queries where Prisma lacks FTS support. Validate tokenization for required languages; `simple` is a candidate for languages without an approved stemmer, not an accuracy guarantee.
 
-Use database events/outbox to drive updates. Index version/revision checks reject stale messages that would restore old metadata or deleted content. Permission/move/delete changes generate invalidation and reindex work. Rebuild into a new index and atomically switch aliases after consistency checks; preserve mapping/analyzer versions.
+An application-owned **SearchPort** defines scoped query, authorized results/continuation, capabilities, projection upsert/remove, status, and rebuild operations. `PostgresFtsAdapter` is default; optional customer-local `OpenSearchAdapter` implements the same contract. Keep provider SDK/query syntax out of controllers/business services. Unsupported capabilities are explicit; do not silently downgrade access controls.
 
-Track oldest pending projection, update failures, missing/stale records, and permission-sync lag. Background reconciliation compares authoritative database state to index projection. Search is eventually consistent; the UI must show pending processing where appropriate.
+Extraction publishes revision-tagged projections via durable jobs. PostgreSQL can publish text/vector/state atomically once processing completes; content extraction itself remains asynchronous. Reject stale generation updates. Rebuild PostgreSQL projections into versioned tables/generations and switch active generation transactionally after checks; optional OpenSearch uses versioned indexes/aliases. Track freshness/failures and reconcile with documents. Search is unavailable/pending explicitly, not falsely complete.
 
 ### 6.3 Preventing authorization leakage
 
-Search authorization is a major review item, not a simple post-filter:
+With PostgreSQL FTS, join authorized resource scope/current lifecycle and accepted-version records **before** ranking, pagination, snippets, and aggregates. Deduplicate chunk matches by document/version. Use parameterized safe query construction, bounded complexity, timeouts, and controlled highlighting output. Counts/facets may be exposed only when computed over the same authorized set. Permission revocations take effect through authoritative policy queries, not delayed index ACL updates.
+
+Optional OpenSearch needs stricter defense because its permissions are projected, not live:
 
 1. Build scope from the authenticated principal using authoritative policy data; never accept client-selected access tokens or organization scope as proof of access.
 2. Apply index-side visibility filtering to reduce the candidate set; ACL fields are a projection, not authorization truth.
@@ -214,21 +227,21 @@ Search authorization is a major review item, not a simple post-filter:
 6. On permission revocation, invalidate permission caches immediately and deny live resource access even while index updates lag. A stale index must not expose old permissions.
 7. Test titles, snippets, autocomplete, spelling suggestions, counts, sort order, exports, caches, timing/error behavior, and tenant boundaries as potential disclosure channels.
 
-If secure arbitrary scoped authorization cannot be implemented efficiently in OpenSearch at the expected scale, simplify the permission model or adopt PostgreSQL-authorized search after review; do not weaken security to preserve a search feature. D-03/D-08 must settle this tradeoff before advanced search.
+Never weaken authorization to enable optional OpenSearch or advanced features. Benchmark PostgreSQL FTS first; enable OpenSearch only for approved customer-local scale/analyzer needs after permission-leakage testing and capacity review. It is not a baseline container or install prerequisite.
 
 ## 7. Authentication and authorization
 
 ### 7.1 Browser identity
 
-Use OIDC Authorization Code + PKCE through the backend. Validate discovery/issuer configuration against an allowlist, exact redirect URIs, `state`, `nonce`, issuer/audience, signature algorithms, key rotation, and token expiry. Do not treat user-supplied discovery URLs as safe.
+**Default local authentication:** maintain internal users and password credentials in PostgreSQL; hash passwords with a maintained Argon2id implementation, per-password random salt, encoded parameters, and tuned bounded cost. Never store recoverable passwords. Provide audited account creation/disable/unlock/reset, safe first-admin bootstrap without seeded passwords, generic login errors, account/source rate limiting, and bounded lockout/backoff against brute force and lockout abuse.
 
-The backend holds tokens server-side only if needed, encrypts sensitive token material, and issues an opaque random session identifier via Secure/HttpOnly/SameSite cookies. Store only a digest of the application session token for lookup. Rotate sessions on login and privilege changes; enforce idle/absolute expiry and server-side revocation. Choose cookie/site behavior compatible with OIDC redirects and test the complete flow.
+Issue opaque random sessions via Secure/HttpOnly/SameSite cookies; store only token digests and server-side state. Enforce idle/absolute expiry and revoke on logout, disable, credential recovery, and security-sensitive changes. Do not persist tokens in browser storage. Local authentication requires no mail service, cloud, IdP, or Internet. Optional LDAP/AD uses validated LDAPS/StartTLS and distinct linked identities; OIDC uses Authorization Code + PKCE when enabled. Keycloak is not required.
 
-Validate CSRF tokens and Origin/Referer for unsafe cookie-authenticated requests; do not rely on SameSite alone. Do not store bearer/refresh tokens in `localStorage`. Require deliberate logout, expired-session behavior, IdP outage policy, and deprovisioning propagation. Email changes must not create or hijack an identity.
+Validate CSRF tokens and Origin/Referer for unsafe cookie-authenticated requests; SameSite alone is insufficient. Directory outages fail closed for directory sign-in, never create local password fallback for that account. Local users remain functional. Directory deprovisioning/group mapping and existing-session behavior require explicit policy. See [Authentication architecture](AUTHENTICATION_ARCHITECTURE.md) for full controls and recovery.
 
 ### 7.2 Integration identity
 
-Use IdP-issued OAuth access tokens for service clients with expected issuer, API audience, permitted algorithms, scopes, and expiry. Client-credentials flow is a candidate for nonhuman clients; user delegation needs a separately approved flow. Service accounts are auditable principals, not superuser API keys. Apply resource authorization in addition to token scopes. Design revocation and short token lifetimes according to risk.
+Provide scoped, random, expiring/revocable local service credentials as a proposed offline API mechanism; store digests, display secrets once, and audit issuance/usage/revocation. Service principals receive explicit role/scope assignments and the same resource policies as users. Never reuse browser passwords or create a universal admin API key. Optional OAuth access tokens validate issuer/audience/signature/scopes; ID tokens are not access tokens. No IdP is required for baseline integrations.
 
 ### 7.3 Resource policies
 
@@ -249,7 +262,7 @@ Pending D-03, do not invent inheritance/deny rules. Moves must check both source
 - Long-running actions return `202` and an authorized job-status resource, not an unbounded synchronous request.
 - Upload/download endpoints stream and implement explicit size/range/cache controls. Request limits must be aligned across proxy and API.
 - Idempotency keys for relevant creates/finalizations/transitions bind to principal, endpoint, payload digest, and expiry; reject conflicting reuse.
-- Enforce rate limits, concurrency limits, API-client scopes, and per-repository quotas only after quota policies are approved.
+- Enforce secure rate/concurrency limits and API-client scopes; tune approved thresholds before release. Per-repository business quotas require a separately approved quota policy.
 - Same-origin browser access is preferred. If CORS is needed, allow explicit origins; never combine credentialed requests with wildcard origin policy.
 - Optional webhooks require signed payloads, replay protection, retry policy, endpoint SSRF controls, and a business requirement; they are not included by default.
 
@@ -304,12 +317,12 @@ Hold creation and purge eligibility must serialize on the affected record/policy
 - **API/database:** least-privilege roles, parameterized access, transactions, migration separation, bounded connection pools.
 - **Binary ingestion:** quarantine, format/signature validation, malware scanning, parser sandbox, decompression/resource limits.
 - **Workers/processors:** separate credentials, narrow file access, network isolation, bounded execution, non-root containers where possible.
-- **Connectors:** endpoint/root allowlists, SSRF protection including redirects/DNS/private-network policy, least-privilege secrets, isolated agents.
+- **Connectors:** approved customer-LAN endpoint/root allowlists, redirect/DNS/rebinding and SSRF defenses without indiscriminately blocking required private shares, least-privilege secrets, isolated agents.
 - **Search/cache:** scoped projections, live authorization, no unauthorized counts/snippets, sensitive-cache invalidation.
-- **Infrastructure:** private service networks, authenticated dependency endpoints, secret rotation, encrypted storage/backups, patching, monitored restore procedures.
+- **Infrastructure:** private service networks, customer-local TLS/DNS/time, authenticated dependencies, local secrets, encrypted storage/backups, verified offline patch/signature updates, and restore drills.
 - **Supply chain:** reviewed licenses, pinned dependencies/images/actions, SBOM, vulnerability scans, integrity/provenance checks.
 
-Logs must not contain document text, cookies, tokens, passwords, connection strings, raw connector secrets, or unredacted sensitive metadata. Error monitoring has the same data-handling restrictions as ordinary logs.
+Logs must not contain document text, cookies, tokens, passwords, connection strings, connector secrets, or unredacted sensitive metadata. All telemetry is customer-local; no external analytics, crash reporting, exporter endpoints, or automated support uploads. Diagnostics are opt-in local redacted exports with deliberate customer-controlled sharing only.
 
 ### 12.2 Audit integrity
 
@@ -317,7 +330,7 @@ Business audit is distinct from operational telemetry. Successful sensitive chan
 
 Use append-only application behavior and dedicated audit write/read privileges. The ordinary runtime must not update/delete prior audit records; an approved maintenance/retention process uses separately controlled credentials. Database administrators can still alter data: append-only tables alone are not tamper-proof.
 
-If stronger evidence is required, use externally anchored signed/hash checkpoints and separately protected immutable exports with verified retention controls. A local hash chain without trusted external anchoring does not prove integrity against privileged tampering. Audit payloads themselves must obey privacy/minimization rules.
+If stronger evidence is required, use signed/hash checkpoints anchored in a **separately administered customer-local evidence store** or approved offline immutable media, with verified retention. No Internet service is required. A hash chain on the same writable server cannot prove integrity against privileged tampering. Audit payloads must obey minimization/privacy rules.
 
 ### 12.3 Verification and incident response
 
@@ -329,39 +342,39 @@ Define security incident ownership, quarantine procedures, credential/key rotati
 
 ### 13.1 Initial topology proposal
 
-Separate development, staging, and production with distinct secrets, databases, buckets, identity clients, and DNS. Start with Docker Compose on an approved VPS or local environment; containers isolate processes but do not provide host-level redundancy.
+Install with Docker Compose on customer-owned Ubuntu/Linux physical servers or VMs. Separate development/test/production data roots, databases, secrets, and optional identity clients. The baseline includes proxy/web, API, PostgreSQL with FTS, local queue/dispatcher/workers, and local isolated processors. LDAP/OIDC/S3/OpenSearch are opt-in profiles/adapters, not baseline dependencies.
 
-Only the reverse proxy exposes public application ports. PostgreSQL, queue, search, scanners, and processor interfaces are private and authenticated; they must not bind publicly without a reviewed reason. Administrative host access requires operator-managed controls. Use non-root multi-stage images, read-only roots where possible, explicit volumes, resource limits, and health checks.
+Only the reverse proxy exposes application HTTPS on approved customer LAN interfaces. PostgreSQL, queue, scanner, and processor endpoints are private/authenticated and not published to the LAN by default. Host admin access is operator-controlled. Use non-root images, read-only roots where practical, approved volumes, limits, and health checks. TLS uses customer CA/manual certificates or approved internal issuance, not public ACME.
 
-Separate services: proxy/web, API, dispatcher/scheduler, general workers, isolated processors, database, queue, and search when selected. IdP/object storage/telemetry may be external. Avoid placing all heavy services on a small VPS without measurement.
+A verified offline bundle contains all images and runtime assets, local instructions, Compose definitions, licenses/SBOM, signatures/checksums, migration tools, and compatible scanner/OCR data. Provide or explicitly document offline Ubuntu/Docker prerequisites. Installation/startup does not pull images/packages, use CDN assets/fonts, require online activation, or send telemetry. See [On-premise deployment](ON_PREMISE_DEPLOYMENT.md).
 
 No deployment is performed in this task. Compose files, firewall rules, certificates, provisioning, and CI deployment credentials remain future approved work.
 
 ### 13.2 Scaling and failure modes
 
-Scale stateless API/web instances and worker classes independently. Budget database connections across API, workers, dispatcher, and migrations. Tune queues based on actual CPU/memory/storage and provider limits. OpenSearch and OCR resource requirements must be benchmarked.
+Scale API/web and local worker classes independently within approved customer infrastructure. Budget DB connections, OCR memory/CPU, storage IOPS, share bandwidth, backup windows, and recovery throughput. Include versions/reference snapshots, quarantine/scratch, PostgreSQL FTS/WAL, audit/log growth, backups, and rebuild headroom in capacity planning; monitor both bytes and inodes. No unmeasured server size is prescribed.
 
 - Storage unavailable: reject/defer new transfers; do not claim writes succeeded.
 - Scanner unavailable: retain quarantine; do not expose unscanned content.
 - Search unavailable: return a clear search error; any approved repository listing fallback still uses live permissions.
 - Queue unavailable: persist outbox intent and processing status; alert on backlog.
 - Database unavailable: fail closed for authorization and business mutations.
-- IdP unavailable: follow approved session continuity policy; no password fallback invented.
+- Optional LDAP/AD/OIDC unavailable: local accounts still work; linked accounts fail sign-in closed, with existing-session revocation/expiry under approved policy. Never downgrade authentication.
 - Connector unavailable: mark degraded and retry; do not delete missing source records automatically.
 
-A single VPS has a host failure domain and cannot meet a strict HA promise. Replication, managed services, multiple hosts, and failover require D-08 review.
+A single server/VM is a single failure domain, not HA. RAID or VM snapshots do not replace backup. Multiple customer hosts, replication, and failover require approved D-08 objectives. Unavailable shares must not fall through to writes under an unmounted local path.
 
 ### 13.3 Backup and restore
 
-Cover database data/WAL, original objects and required object versions, audit exports, connector mappings, configurations, self-hosted IdP state, and encryption/signing key material through separately controlled procedures. Derivatives/search can be rebuilt if originals and provenance are intact; approve whether to back them up for faster recovery.
+Cover PostgreSQL data/WAL including local account hashes/authorization/audit, managed originals/reference snapshots, required configuration, connector state, and customer-held encryption/signing keys through separately controlled procedures. Optional self-hosted integrations require their own backup policies. Derivatives/FTS may be rebuilt from retained originals/provenance. Reference source backups belong to the source owner; managed snapshots are part of DMS backup.
 
-Encrypt backups, restrict backup identities, keep approved off-host copies, and test restoration in an isolated environment. Validate database/object inventory consistency, roles/access policies, held records, content hashes, and rebuild progress. Restore deletion/hold state before reopening traffic so recovery does not resurrect purged data accidentally.
+Encrypt backups, restrict identities, and keep copies on a separate customer-controlled failure domain/media. Quiesce mutation/purge and align DB recovery points with immutable file manifests/snapshots, or implement a tested online consistency protocol. Restore in isolation with connectors/schedules paused; validate version hashes, permissions, account recovery, holds/tombstones, mount identity, and rebuild state before traffic resumes. Revoke restored sessions/service secrets as appropriate. No cloud backup is mandatory.
 
 Define RPO/RTO, backup/retention schedules, key recovery, incident roles, and recovery acceptance tests before production readiness. Backup presence is not proof of recoverability.
 
 ### 13.4 Observability and release safety
 
-Emit structured logs, trace/request IDs, and metrics for API latency/errors, authorization denials, storage failures, queue age/depth, processor duration/errors, connector lag, index freshness, and backup/restore outcomes. Separate liveness from dependency readiness; avoid making a recoverable optional-service outage restart every container.
+Emit customer-local redacted logs/traces/metrics for API errors/latency, auth failures/lockout, jobs, processors, mounts, free bytes/inodes, connector/index lag, scan-signature age, certificate expiry, and backup/restore. Provide a local health/admin view even without a full telemetry stack. Separate liveness from readiness; optional-service failure must not prevent baseline local login/listing. Alerts use local dashboard and optional customer-local delivery, not mandatory external mail/chat.
 
 Use alert thresholds agreed against baselines, named owners, and runbooks. Perform health checks and smoke tests after approved releases. Use expand/contract migrations and retained compatible images for rollback; irreversible migrations require recovery plans, not a promise of automatic rollback.
 
@@ -371,13 +384,13 @@ Proposed decisions for review:
 
 1. Modular TypeScript monolith plus separate workers, not business microservices.
 2. PostgreSQL as authoritative business/security state; Prisma subject to SQL needs and compatibility.
-3. Private S3-compatible managed originals; external adapters with explicit ownership modes.
-4. OIDC and server-side browser sessions; authorization remains in the DMS.
+3. Local managed filesystem plus NAS/SMB/NFS support; read-only external references with immutable version snapshots; S3 optional.
+4. Local password authentication and server-side sessions; LDAP/AD/OIDC optional, Keycloak not required; DMS-enforced RBAC.
 5. Immutable document versions; reliable outbox and idempotent processing.
 6. Local sandboxed OCR/extraction/previews; no cloud content processing by default.
-7. Dedicated OpenSearch target, with PostgreSQL FTS as a reviewed lower-cost alternative.
+7. PostgreSQL FTS default behind SearchPort; customer-local OpenSearch optional.
 8. React/Vite SPA and reviewed OpenAPI integration contract.
-9. Docker-ready VPS baseline without implying HA; off-host backups and restoration tests.
-10. Tenancy, detailed permissions, workflow, retention, and capacity deferred to explicit Product Owner decisions.
+9. Docker Compose on customer-owned physical/virtual Ubuntu servers, offline install/update, local TLS/monitoring, capacity and tested customer-controlled backup/restore.
+10. No mandatory cloud/Internet/external IdP/API, and no telemetry outside customer infrastructure; organization boundaries, detailed policies, workflow, retention, and capacity targets remain open.
 
 After approval, capture decisions in `docs/adr/` before implementing consequences. This proposal is not a substitute for a threat model, approved schema, benchmark, or production readiness review.

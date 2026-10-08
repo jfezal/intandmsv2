@@ -1,6 +1,6 @@
 # IntanDMS V2
 
-Enterprise Document Management System proposed for **Sisi Awan Technologies Sdn Bhd**.
+On-premise enterprise Document Management System for **Sisi Awan Technologies Sdn Bhd**, designed for customer-owned Ubuntu/Linux servers or VMs on a private LAN/intranet.
 
 **Status: architecture proposal; awaiting Product Owner approval.** This repository contains planning documents only. No application, deployment, database schema, or dependency installation has been implemented.
 
@@ -21,17 +21,23 @@ Enterprise Document Management System proposed for **Sisi Awan Technologies Sdn 
 4. [Technology stack](docs/TECHNOLOGY_STACK.md): recommendations, tradeoffs, dependencies, and licensing gates.
 5. [Development standards](docs/DEVELOPMENT_STANDARDS.md): structure, coding conventions, testing, migrations, and delivery controls.
 6. [Development roadmap](docs/DEVELOPMENT_ROADMAP.md): phased delivery and approval gates.
-7. [AI development instructions](AGENTS.md): mandatory rules for future agents.
+7. [On-premise deployment](docs/ON_PREMISE_DEPLOYMENT.md): offline installation, capacity, health monitoring, backup/restore, and administration.
+8. [Storage architecture](docs/STORAGE_ARCHITECTURE.md): local filesystem, NAS/SMB/NFS, optional S3, managed and read-only reference modes.
+9. [Authentication architecture](docs/AUTHENTICATION_ARCHITECTURE.md): default local users, password security, sessions, and optional LDAP/AD/OIDC.
+10. [AI development instructions](AGENTS.md): mandatory rules for future agents.
 
-## Recommended direction — not yet approved
+## Confirmed product direction and proposed implementation
+
+The Product Owner has confirmed on-premise-first, fully functional offline operation with no mandatory cloud service, third-party IdP, public Internet connectivity, or telemetry outside customer infrastructure. These constraints supersede the original S3/OIDC/OpenSearch-first recommendations. Implementation details remain subject to review.
 
 - npm-workspace TypeScript monorepo; React/Vite frontend; NestJS/Fastify modular API; separately deployed workers.
 - PostgreSQL for authoritative metadata, permissions, workflows, sessions, and audit records.
-- S3-compatible managed binary storage with adapters for approved NAS/SMB modes.
+- Local filesystem managed storage plus NAS/SMB/NFS adapters; optional S3-compatible storage. External-reference sources are never modified.
 - BullMQ with a compatibility-tested Valkey deployment for queues; transactional outbox for reliable dispatch.
-- OpenSearch as a rebuildable full-text index; sandboxed text extraction, OCR, scanning, and preview processing.
-- OpenID Connect with an enterprise identity provider; API-enforced RBAC and scoped resource authorization.
-- Docker Compose for initial development and a reviewed VPS deployment; no Kubernetes requirement initially.
+- PostgreSQL Full-Text Search by default behind a search interface; OpenSearch is optional.
+- Default local authentication with Argon2id password hashing, server-side sessions, rate limiting/lockout, RBAC, and audit. LDAP/AD and OIDC are optional; Keycloak is not required.
+- Local Tesseract OCR, preview generation, scanning, workers, and customer-local observability.
+- Docker Compose-based customer installation with an offline release bundle, customer-local TLS, capacity planning, and backup/restore. No Kubernetes requirement initially.
 
 See the architecture and stack documents for qualifications. Exact dependency versions, resource sizing, performance targets, and operating costs require validation before implementation.
 

@@ -3,8 +3,8 @@
 ## Authority and current status
 - Company: Sisi Awan Technologies Sdn Bhd; the human user is the Product Owner.
 - Current state: documentation-only architecture proposal, not approved implementation.
-- Read README.md and docs/REQUIREMENTS.md, docs/SYSTEM_ARCHITECTURE.md,
-  docs/DEVELOPMENT_STANDARDS.md, and docs/DEVELOPMENT_ROADMAP.md before work.
+- Read README.md, requirements, system architecture, standards, and roadmap in docs/;
+  also read ON_PREMISE_DEPLOYMENT.md, STORAGE_ARCHITECTURE.md, AUTHENTICATION_ARCHITECTURE.md.
 - Distinguish confirmed requirements, proposals, and unknowns; never invent business rules.
 - Obtain Product Owner approval before implementing application features or changing major architecture.
 - Do not deploy, modify production infrastructure, push to GitHub, or perform irreversible
@@ -14,6 +14,17 @@
 - Do not delegate to subagents unless explicitly requested or required by applicable instructions.
 
 ## Engineering rules for approved implementation
+- On-premise-first, customer-owned Ubuntu/Linux servers/VMs; fully functional without Internet.
+- No mandatory cloud, third-party IdP, Keycloak, public DNS/ACME, or outbound telemetry.
+- Local authentication is default: secure password hashing, sessions, lockout/rate limiting, RBAC/audit.
+- LDAP/AD and OIDC are optional; never downgrade directory accounts to local authentication.
+- Local filesystem and NAS/SMB/NFS storage are supported; S3-compatible storage is optional.
+- Managed and external-reference modes are required; reference sources must NEVER be modified.
+- Preserve versions via immutable snapshots; do not substitute current source bytes for historical content.
+- PostgreSQL Full-Text Search is default behind an interface; OpenSearch is optional.
+- OCR (Tesseract), previews, workers, dependencies, assets, and monitoring stay customer-local.
+- Docker Compose installation must work offline using a verified release bundle and local TLS.
+- Plan/test capacity, mount failures, local health, offline signature updates, backups, and restores.
 - Follow the proposed modular boundaries only after approval; record deviations in an ADR.
 - Use strict TypeScript, environment-validated configuration, and pinned dependency versions.
 - Keep business logic out of controllers/UI; repositories own persistence, adapters own integrations.
@@ -23,11 +34,11 @@
 - Keep binaries out of PostgreSQL; never use a user filename as a storage key.
 - Never expose a file before required scanning and permission checks have succeeded.
 - Use migrations, transactions, concurrency controls, and an outbox for DB-to-job handoff.
-- Make workers idempotent; Redis/Valkey and search are not authoritative databases.
+- Make workers idempotent; queues and search projections are not authoritative business state.
 - Do not log secrets, bearer tokens, raw document text, or unnecessary personal data.
 - Audit sensitive actions; keep operational logs distinct from business audit records.
 - Add positive and negative authorization tests and failure-path tests with each feature.
-- No retention deletion or remote-source deletion without approved policy and safety controls.
+- No retention deletion without approved policy/controls; external-reference source deletion is prohibited.
 - Keep API contracts, tests, configuration documentation, and operational notes synchronized.
 - Review dependency licenses, vulnerabilities, Node 24 support, and Docker base images.
 - Do not claim tests/builds passed unless actually executed; report blocked checks honestly.
