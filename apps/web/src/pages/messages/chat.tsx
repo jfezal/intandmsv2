@@ -65,6 +65,15 @@ export function systemText(message: Pick<ChatMessage, 'body' | 'metadata' | 'sen
   }
 }
 
+export function conversationPreview(item: ConversationSummary, meId: string, t: Translator): string {
+  const last = item.lastMessage;
+  if (!last) return t('chatNoMessagesYet');
+  if (last.kind === 'system') return systemText({ body: last.preview, metadata: last.metadata, sender: last.sender }, t);
+  const prefix =
+    last.sender?.id === meId ? `${t('chatYou')}: ` : item.kind !== 'DIRECT' && last.sender ? `${last.sender.displayName}: ` : '';
+  return `${prefix}${last.preview}`;
+}
+
 function dayKey(value: string): string {
   const date = new Date(value);
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;

@@ -29,6 +29,7 @@
 - API `/api/v1/messages/*`: user directory, direct/group/document conversations, send/edit/read, unread summary, `GET /messages/stream` (SSE, ids only, session re-checked every heartbeat, max 5 streams/user, Valkey channel `intandms:messages` or in-memory)
 - Investigation: `/messages/investigation/*?reason=` (reason 5–500 chars, audited `messages.investigate_list` / `messages.investigate_read`)
 - Web: `#/messages`, document discussion and "Share" in the explorer details panel, `#/admin/messages` (investigation)
+- Topbar inbox: message icon with unread-conversation badge, dropdown of the 8 latest conversations, pop-up when another person's message arrives in a conversation that is not open, unread count in the browser tab title
 - Not yet covered: API integration tests for the two-user flow and non-member/non-auditor refusals (no API test harness yet)
 
 ## Security fix (uncommitted)

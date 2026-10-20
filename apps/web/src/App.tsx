@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Shell } from './components/Shell';
 import { Alert, Button, Spinner } from './components/ui';
 import { I18nContext, type Locale, type MessageKey, translate } from './i18n';
@@ -14,7 +14,8 @@ import {
 import { useRoute } from './lib/route';
 import { AuditPage, MessageInvestigationPage, RepositoriesPage, RolesPage, StoragePage, UsersPage } from './pages/AdminPages';
 import { MessagesPage } from './pages/messages/MessagesPage';
-import { useMessageEvents, useMessageStream } from './lib/messageStream';
+import { useMessageStream } from './lib/messageStream';
+import { InboxMenu, InboxToast, useInbox } from './pages/messages/InboxMenu';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ExplorerPage } from './pages/explorer/ExplorerPage';
@@ -93,31 +94,18 @@ export function App(): React.ReactElement {
     }
   }, [handleAuthError]);
 
-  const [unreadConversations, setUnreadConversations] = useState(0);
-  const unreadTimer = useRef<number | undefined>(undefined);
-  const loadUnread = useCallback(() => {
-    window.clearTimeout(unreadTimer.current);
-    unreadTimer.current = window.setTimeout(() => {
-      api<{ unreadConversations: number }>('/api/v1/messages/unread')
-        .then((summary) => setUnreadConversations(summary.unreadConversations))
-        .catch(handleAuthError);
-    }, 250);
-  }, [handleAuthError]);
-
   useMessageStream(signedIn);
-  useMessageEvents(() => {
-    if (signedIn) loadUnread();
-  });
+  const inbox = useInbox(
+    signedIn && session.kind === 'signed-in' ? session.user.id : null,
+    route.name === 'messages' ? route.conversationId : undefined,
+    handleAuthError,
+  );
 
   useEffect(() => {
-    if (!signedIn) {
-      setUnreadConversations(0);
-      return;
-    }
+    if (!signedIn) return;
     void loadRepositories();
     void loadTasks();
-    loadUnread();
-  }, [signedIn, loadRepositories, loadTasks, loadUnread]);
+  }, [signedIn, loadRepositories, loadTasks]);
 
   useEffect(() => {
     setPasswordChangeRequiredHandler(() =>
@@ -227,9 +215,11 @@ export function App(): React.ReactElement {
         onLocaleChange={setLocale}
         onLogout={() => void logout()}
         taskCount={tasks?.length ?? 0}
-        unreadMessages={unreadConversations}
+        unreadMessages={inbox.unreadConversations}
+        topbarExtra={<InboxMenu meId={user.id} inbox={inbox} />}
       >
         {page}
+        <InboxToast meId={user.id} inbox={inbox} />
       </Shell>
     );
   }

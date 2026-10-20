@@ -12,8 +12,8 @@ import {
   Composer,
   MessageThread,
   UserPicker,
+  conversationPreview,
   conversationTitle,
-  systemText,
   useConversationDetail,
   useConversationMessages,
 } from './chat';
@@ -84,12 +84,7 @@ function ConversationList({
         <ul className="conversation-list">
           {visible.map((item) => {
             const title = conversationTitle(item, me.id, t);
-            const last = item.lastMessage;
-            const preview = last
-              ? last.kind === 'system'
-                ? systemText({ body: last.preview, metadata: last.metadata, sender: last.sender }, t)
-                : `${last.sender?.id === me.id ? `${t('chatYou')}: ` : item.kind !== 'DIRECT' && last.sender ? `${last.sender.displayName}: ` : ''}${last.preview}`
-              : t('chatNoMessagesYet');
+            const preview = conversationPreview(item, me.id, t);
             return (
               <li key={item.id}>
                 <a

@@ -3493,6 +3493,134 @@ a.chat-doc:hover {
   display: none;
 }
 
+/* ---------- Topbar inbox ---------- */
+.topbar-inbox {
+  position: relative;
+}
+
+.inbox-trigger {
+  position: relative;
+}
+
+.inbox-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  padding: 0 5px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.inbox-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - var(--topbar-h) - 24px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.inbox-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.inbox-head h2 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.inbox-empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.inbox-list {
+  flex: 1;
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.inbox-foot {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+.inbox-foot:hover {
+  background: var(--surface-hover);
+}
+
+.inbox-toast-region {
+  position: fixed;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  z-index: 60;
+}
+
+.inbox-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: min(360px, calc(100vw - 32px));
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: inbox-toast-in 0.2s ease-out;
+}
+
+.inbox-toast-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.inbox-toast-body:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@keyframes inbox-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1200px) {
   .explorer.with-details {

@@ -35,6 +35,7 @@ export function Shell({
   onLogout,
   taskCount,
   unreadMessages,
+  topbarExtra,
   children,
 }: {
   user: MeUser;
@@ -44,6 +45,7 @@ export function Shell({
   onLogout: () => void;
   taskCount: number;
   unreadMessages: number;
+  topbarExtra?: ReactNode;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -165,6 +167,7 @@ export function Shell({
             <span />
           )}
           <div className="topbar-actions">
+            {topbarExtra}
             <div className="segmented" role="group" aria-label={t('language')}>
               {(['ms', 'en'] as const).map((option) => (
                 <button
