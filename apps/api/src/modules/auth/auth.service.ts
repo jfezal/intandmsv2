@@ -12,6 +12,7 @@ import {
   verifyPassword,
 } from '@intandms/identity';
 import type { AppEnv } from '../../config/env.schema';
+import { RateLimitService } from '../../common/rate-limit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type AuthUser = {
@@ -28,10 +29,19 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<AppEnv, true>,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   async login(body: LoginBody, ipAddress?: string): Promise<{ token: string; user: AuthUser }> {
     this.assertNotRateLimited(body.login);
+
+    const ipKey = ipAddress ? `auth:ip:${ipAddress}` : 'auth:ip:unknown';
+    const loginKey = `auth:login:${body.login}`;
+    const ipOk = await this.rateLimit.increment(ipKey, 900, 60);
+    const loginOk = await this.rateLimit.increment(loginKey, 900, 20);
+    if (!ipOk || !loginOk) {
+      throw new UnauthorizedException('Invalid login or password.');
+    }
 
     const user = await this.prisma.client.user.findUnique({
       where: { login: body.login },

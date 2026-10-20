@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CsrfGuard } from '../../common/csrf.guard';
 import { AuthenticatedRequest, SessionAuthGuard } from '../auth/session-auth.guard';
@@ -13,6 +13,11 @@ export class ConnectorsController {
   @Get()
   list(@Req() request: AuthenticatedRequest) {
     return this.connectors.list(request.user!);
+  }
+
+  @Post(':connectorId/health-check')
+  health(@Req() request: AuthenticatedRequest, @Param('connectorId') connectorId: string) {
+    return this.connectors.healthCheck(request.user!, connectorId);
   }
 
   @Post()

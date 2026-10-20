@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@intandms/database": "*",
+    "@intandms/processing": "*",
     "@intandms/storage": "*",
     "bullmq": "^5.58.0",
     "ioredis": "^5.7.0"

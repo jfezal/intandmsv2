@@ -2,34 +2,26 @@
 
 **Updated:** 2026-10-20
 
-## Ringkas
+## Push / repo
 
-| Lapisan | Status |
-|---------|--------|
-| **MVP demo** (login → managed repo → upload → search) | **Siap** |
-| **Production core** (bukan MVP) | **Dalam repo — major upgrade** |
-| **OCR (Tesseract)** | **Belum — intentionally last** |
-| **100% spec FR-01–FR-20** | **Belum** (offline bundle, 1M bench, BM/EN penuh, ClamAV production, SMB remote agent, dll.) |
+- GitHub: `jfezal/intandmsv2` — `main` includes foundation + production core commits.
 
-## Production-grade (implemented now)
+## Ready for pilot (managed + indexed local mount)
 
-- **CSRF** double-submit (`GET /auth/csrf`, cookie + header)
-- **Repository-scoped RBAC** (`scoped_role_assignments` + server checks)
-- **Upload quarantine → scan gate → publish** (worker; ClamAV hook point — dev marks `clean`)
-- **Indexed repository** + connector registry + read-only filesystem scan worker
-- **Workflow** start review + task decide + my tasks
-- **Retention** report-only + legal holds (no purge)
-- **Preview** inline for image/pdf/text (no OCR)
-- **Audit** query API, **admin** users + scoped role assign
-- **Connectors** CRUD (mount path on host — SMB/NFS via customer mount)
+- Auth, CSRF, Valkey-backed login rate limits (fallback memory)
+- Scoped RBAC, quarantine upload, ClamAV hook (`clamscan`, `REQUIRE_CLAMAV` for strict prod)
+- Worker: publish, FTS index, preview artifacts, indexed read-only scan
+- Workflow tasks, retention report/holds, audit/admin/connectors health
+- Web: BM/EN labels, explorer, search, workflow task list
+- OCR: **implemented but off by default** (`OCR_ENABLED=true` + Tesseract)
+- Offline bundle script: `npm run bundle:offline` (stages images + compose; sign manifest operationally)
 
-## Still deferred (not “MVP-only” target — real work remaining)
+## Still open for full enterprise spec
 
-- Tesseract OCR + office preview pipeline (last)
-- ClamAV integration + signature offline update policy
-- Remote SMB/NFS connector agent (bukan local mountPath sahaja)
-- Full UI/UX spec (BM/EN, design system, explorer states)
-- Offline signed release bundle + install wizard
-- Testcontainers / Playwright / k6 at scale
+- Remote SMB/NFS connector agent (non-mountPath)
+- LibreOffice headless previews for Office formats
+- Playwright/Testcontainers/k6 at 1M scale
+- Full UI/UX spec screens and WCAG acceptance
+- Customer-signed offline release process
 
 See [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md).

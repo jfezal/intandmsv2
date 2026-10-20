@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { type Locale, t } from './i18n';
 
 type MeUser = {
   id: string;
@@ -73,6 +74,8 @@ export function App(): React.ReactElement {
   const [searchHits, setSearchHits] = useState<Array<{ documentId: string; displayName: string; snippet: string }>>(
     [],
   );
+  const [locale, setLocale] = useState<Locale>('ms');
+  const [tasks, setTasks] = useState<Array<{ id: string; stepKey: string; status: string }>>([]);
 
   const refreshRepositories = useCallback(async () => {
     const rows = await api<Repository[]>('/api/v1/repositories');
@@ -112,6 +115,15 @@ export function App(): React.ReactElement {
       setError(refreshError instanceof Error ? refreshError.message : 'Failed to load repositories.');
     });
   }, [user, refreshRepositories]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    void api<Array<{ id: string; stepKey: string; status: string }>>('/api/v1/workflow/tasks/mine')
+      .then(setTasks)
+      .catch(() => setTasks([]));
+  }, [user]);
 
   useEffect(() => {
     if (!user || !selectedRepoId) {
@@ -207,8 +219,8 @@ export function App(): React.ReactElement {
     return (
       <main className="shell">
         <header>
-          <h1>IntanDMS V2</h1>
-          <p>Local sign-in</p>
+          <h1>{t(locale, 'title')}</h1>
+          <p>{t(locale, 'signIn')}</p>
         </header>
         <form className="panel" onSubmit={(event) => void onSubmit(event)}>
           <label>
@@ -226,7 +238,7 @@ export function App(): React.ReactElement {
           </label>
           {error ? <p className="error">{error}</p> : null}
           <button type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? '…' : t(locale, 'signIn')}
           </button>
         </form>
       </main>
@@ -237,20 +249,26 @@ export function App(): React.ReactElement {
     <main className="shell wide">
       <header className="row">
         <div>
-          <h1>IntanDMS V2</h1>
+          <h1>{t(locale, 'title')}</h1>
           <p>
             {user.displayName} ({user.login})
           </p>
         </div>
-        <button type="button" onClick={() => void onLogout()}>
-          Log out
-        </button>
+        <div className="row">
+          <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+            <option value="ms">BM</option>
+            <option value="en">EN</option>
+          </select>
+          <button type="button" onClick={() => void onLogout()}>
+            {t(locale, 'logout')}
+          </button>
+        </div>
       </header>
 
       {error ? <p className="error">{error}</p> : null}
 
       <section className="panel">
-        <h2>Repositories</h2>
+        <h2>{t(locale, 'repositories')}</h2>
         <div className="row">
           <select value={selectedRepoId} onChange={(event) => setSelectedRepoId(event.target.value)}>
             {repositories.map((repo) => (
@@ -271,7 +289,7 @@ export function App(): React.ReactElement {
       </section>
 
       <section className="panel">
-        <h2>Explorer</h2>
+        <h2>{t(locale, 'explorer')}</h2>
         <form className="row" onSubmit={(event) => void createFolder(event)}>
           <input
             placeholder="New folder"
@@ -310,7 +328,7 @@ export function App(): React.ReactElement {
       </section>
 
       <section className="panel">
-        <h2>Search</h2>
+        <h2>{t(locale, 'search')}</h2>
         <form className="row" onSubmit={(event) => void runSearch(event)}>
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Query" />
           <button type="submit">Search</button>
@@ -320,6 +338,17 @@ export function App(): React.ReactElement {
             <li key={hit.documentId}>
               <strong>{hit.displayName}</strong>
               <div className="muted">{hit.snippet}</div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel">
+        <h2>{t(locale, 'workflowTasks')}</h2>
+        <ul>
+          {tasks.map((task) => (
+            <li key={task.id}>
+              {task.stepKey} — {task.status}
             </li>
           ))}
         </ul>

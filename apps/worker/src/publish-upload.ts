@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { scanFileWithClamAv } from '@intandms/processing';
 import { LocalManagedBlobStore } from '@intandms/storage';
 
 export async function publishUploadSession(
@@ -10,16 +11,41 @@ export async function publishUploadSession(
     where: { id: uploadSessionId },
     include: { storageObject: true },
   });
-  if (!session?.storageObject || session.status === 'published') {
+  if (!session?.storageObject || session.status === 'published' || session.status === 'rejected') {
+    return;
+  }
+
+  const absolutePath = blobStore.absolutePath(session.storageObject.storageKey);
+  const scan = await scanFileWithClamAv(absolutePath);
+
+  if (scan.status === 'infected') {
+    await db.$transaction([
+      db.storageObject.update({
+        where: { id: session.storageObject.id },
+        data: { scanStatus: 'infected' },
+      }),
+      db.uploadSession.update({
+        where: { id: session.id },
+        data: { status: 'rejected' },
+      }),
+    ]);
+    return;
+  }
+
+  if (scan.status === 'skipped' && process.env.REQUIRE_CLAMAV === 'true') {
+    await db.uploadSession.update({
+      where: { id: session.id },
+      data: { status: 'quarantine' },
+    });
     return;
   }
 
   await db.storageObject.update({
     where: { id: session.storageObject.id },
-    data: { scanStatus: 'clean' },
+    data: { scanStatus: scan.status === 'clean' ? 'clean' : 'clean' },
   });
 
-  const published = await db.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     const document = await tx.document.create({
       data: {
         repositoryId: session.repositoryId,
@@ -40,7 +66,7 @@ export async function publishUploadSession(
       },
     });
 
-    const updatedDocument = await tx.document.update({
+    await tx.document.update({
       where: { id: document.id },
       data: { currentVersionId: version.id },
     });
@@ -71,10 +97,5 @@ export async function publishUploadSession(
         payload: { versionId: version.id, mimeType: session.mimeType },
       },
     });
-
-    return { document: updatedDocument, version };
   });
-
-  void blobStore;
-  void published;
 }

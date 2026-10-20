@@ -51,12 +51,15 @@ export class LocalManagedBlobStore {
     };
   }
 
-  async readBytes(storageKey: string): Promise<Buffer> {
-    const absolutePath = resolveSafePath({
+  absolutePath(storageKey: string): string {
+    return resolveSafePath({
       rootAbsolute: this.rootAbsolute,
       relativePath: storageKey,
     });
-    return readFile(absolutePath);
+  }
+
+  async readBytes(storageKey: string): Promise<Buffer> {
+    return readFile(this.absolutePath(storageKey));
   }
 
   async statObject(storageKey: string): Promise<{ sizeBytes: number }> {

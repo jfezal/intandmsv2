@@ -2,6 +2,7 @@ import { createPrismaClient } from '@intandms/database';
 import { LocalManagedBlobStore } from '@intandms/storage';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import { ensurePreviewArtifact, indexDocumentVersion } from './index-version';
 import { publishUploadSession } from './publish-upload';
 import { scanIndexedRepository } from './scan-indexed';
 
@@ -38,37 +39,26 @@ export async function startOutboxDispatcher(): Promise<() => Promise<void>> {
         }
 
         if (event.eventType === 'document.version.index_requested') {
-          const payload = event.payload as {
-            versionId?: string;
-            mimeType?: string;
-          };
+          const payload = event.payload as { versionId?: string; mimeType?: string };
+          if (payload.versionId) {
+            await indexDocumentVersion(db, blobStore, payload.versionId, payload.mimeType);
+          }
+        }
+
+        if (event.eventType === 'document.version.preview_requested') {
+          const payload = event.payload as { versionId?: string; mimeType?: string };
           if (payload.versionId) {
             const version = await db.documentVersion.findUnique({
               where: { id: payload.versionId },
               include: { storageObject: true },
             });
             if (version?.storageObject) {
-              let text = '';
-              if ((payload.mimeType ?? version.mimeType).startsWith('text/')) {
-                const bytes = await blobStore.readBytes(version.storageObject.storageKey);
-                text = bytes.toString('utf8').slice(0, 32_000);
-              } else {
-                text = `${version.mimeType} ${version.sha256}`;
-              }
-              await db.searchChunk.upsert({
-                where: {
-                  documentVersionId_chunkIndex: {
-                    documentVersionId: version.id,
-                    chunkIndex: 0,
-                  },
-                },
-                create: {
-                  documentVersionId: version.id,
-                  chunkIndex: 0,
-                  textContent: text,
-                },
-                update: { textContent: text },
-              });
+              await ensurePreviewArtifact(
+                db,
+                version.id,
+                payload.mimeType ?? version.mimeType,
+                version.storageObject.storageKey,
+              );
             }
           }
         }

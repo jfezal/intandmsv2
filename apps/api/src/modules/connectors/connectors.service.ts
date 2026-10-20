@@ -47,4 +47,32 @@ export class ConnectorsService {
     await this.authz.writeAudit(principal, 'connector.create', 'indexed_connector', connector.id, 'success');
     return connector;
   }
+
+  async healthCheck(principal: AuthPrincipal, connectorId: string) {
+    if (!this.authz.hasPermission(principal, PERMISSIONS.CONNECTORS_MANAGE)) {
+      throw forbidden();
+    }
+    const connector = await this.prisma.client.indexedConnector.findUnique({
+      where: { id: connectorId },
+    });
+    if (!connector) {
+      throw forbidden('Connector not found.');
+    }
+
+    let note = 'Mount path not configured.';
+    if (connector.mountPath) {
+      try {
+        const { access } = await import('node:fs/promises');
+        await access(connector.mountPath);
+        note = 'Mount path reachable (read check only).';
+      } catch {
+        note = 'Mount path not reachable from application host.';
+      }
+    }
+
+    return this.prisma.client.indexedConnector.update({
+      where: { id: connectorId },
+      data: { lastHealthAt: new Date(), lastHealthNote: note },
+    });
+  }
 }

@@ -21,6 +21,11 @@
     "db:migrate:deploy": "npm run migrate:deploy -w @intandms/database",
     "bootstrap:admin": "npm run bootstrap:admin -w @intandms/database",
     "compose:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d",
-    "compose:down": "docker compose -f infra/compose/docker-compose.dev.yml down"
+    "compose:down": "docker compose -f infra/compose/docker-compose.dev.yml down",
+    "test": "vitest run",
+    "bundle:offline": "bash scripts/build-offline-bundle.sh"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0"
   }
 }
