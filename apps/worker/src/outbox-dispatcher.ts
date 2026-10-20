@@ -2,6 +2,8 @@ import { createPrismaClient } from '@intandms/database';
 import { LocalManagedBlobStore } from '@intandms/storage';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import { publishUploadSession } from './publish-upload';
+import { scanIndexedRepository } from './scan-indexed';
 
 const valkeyUrl = process.env.VALKEY_URL ?? 'redis://127.0.0.1:6380';
 const storageRoot = process.env.MANAGED_STORAGE_ROOT ?? './data/managed';
@@ -21,6 +23,20 @@ export async function startOutboxDispatcher(): Promise<() => Promise<void>> {
       });
 
       for (const event of events) {
+        if (event.eventType === 'upload.scan_requested') {
+          const payload = event.payload as { uploadSessionId?: string };
+          if (payload.uploadSessionId) {
+            await publishUploadSession(db, blobStore, payload.uploadSessionId);
+          }
+        }
+
+        if (event.eventType === 'repository.index_scan_requested') {
+          const payload = event.payload as { repositoryId?: string };
+          if (payload.repositoryId) {
+            await scanIndexedRepository(db, payload.repositoryId);
+          }
+        }
+
         if (event.eventType === 'document.version.index_requested') {
           const payload = event.payload as {
             versionId?: string;

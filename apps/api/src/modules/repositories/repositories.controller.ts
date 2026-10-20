@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthenticatedRequest, SessionAuthGuard } from '../auth/session-auth.guard';
+import { CsrfGuard } from '../../common/csrf.guard';
 import { RepositoriesService } from './repositories.service';
 
 @ApiTags('repositories')
 @Controller('repositories')
-@UseGuards(SessionAuthGuard)
+@UseGuards(SessionAuthGuard, CsrfGuard)
 export class RepositoriesController {
   constructor(private readonly repositories: RepositoriesService) {}
 
@@ -20,6 +21,14 @@ export class RepositoriesController {
     @Body() body: { name: string; description?: string; rootRelativePath: string },
   ) {
     return this.repositories.createManaged(request.user!, body);
+  }
+
+  @Post('indexed')
+  createIndexed(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: { name: string; connectorId: string; description?: string },
+  ) {
+    return this.repositories.createIndexed(request.user!, body);
   }
 
   @Get(':repositoryId/folders')

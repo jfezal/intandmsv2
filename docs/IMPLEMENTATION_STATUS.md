@@ -1,29 +1,35 @@
 # Implementation status
 
-**Updated:** 2026-10-20  
-**Phase:** 1–2 MVP delivered in-repo; phases 3–6 partially scaffolded
+**Updated:** 2026-10-20
 
-## Implemented (runnable)
+## Ringkas
 
-- Monorepo: API (NestJS/Fastify), web (React/Vite), worker (BullMQ), packages (`core`, `identity`, `storage`, `database`, `contracts`)
-- Local auth: Argon2id, sessions, bootstrap admin, RBAC permissions
-- **Managed repositories**: create repository, folders, upload/download documents, immutable version row + storage object
-- Outbox → worker indexing hook → PostgreSQL FTS chunks + `/api/v1/search`
-- Audit events on repository/document actions
-- Platform stubs: indexed connectors list, workflow definitions, retention policies (tables + read APIs)
-- Dev Compose (Postgres/Valkey) and full stack Compose + Dockerfiles + nginx reverse proxy (`:8088`)
+| Lapisan | Status |
+|---------|--------|
+| **MVP demo** (login → managed repo → upload → search) | **Siap** |
+| **Production core** (bukan MVP) | **Dalam repo — major upgrade** |
+| **OCR (Tesseract)** | **Belum — intentionally last** |
+| **100% spec FR-01–FR-20** | **Belum** (offline bundle, 1M bench, BM/EN penuh, ClamAV production, SMB remote agent, dll.) |
 
-## Spec gaps (honest)
+## Production-grade (implemented now)
 
-The master spec (FR-01–FR-20, NFRs, offline release bundle, NAS SMB/NFS connectors, Tesseract/OCR, previews, workflow execution, retention purge, CSRF hardening, multi-instance rate limits, 1M-doc benchmarks, BM/i18n UX, etc.) is **not fully implemented**. This repository is an **MVP foundation + document core**, not production-complete IntanDMS V2.
+- **CSRF** double-submit (`GET /auth/csrf`, cookie + header)
+- **Repository-scoped RBAC** (`scoped_role_assignments` + server checks)
+- **Upload quarantine → scan gate → publish** (worker; ClamAV hook point — dev marks `clean`)
+- **Indexed repository** + connector registry + read-only filesystem scan worker
+- **Workflow** start review + task decide + my tasks
+- **Retention** report-only + legal holds (no purge)
+- **Preview** inline for image/pdf/text (no OCR)
+- **Audit** query API, **admin** users + scoped role assign
+- **Connectors** CRUD (mount path on host — SMB/NFS via customer mount)
 
-## Next engineering priorities
+## Still deferred (not “MVP-only” target — real work remaining)
 
-1. Folder-scoped RBAC (D-03) and CSRF for unsafe cookie requests  
-2. Quarantine/malware scan boundary before publish  
-3. NAS indexed connector workers (read-only)  
-4. Tesseract/preview processors in isolated containers  
-5. Offline verified release bundle and installation runbook execution  
-6. Testcontainers + Playwright acceptance suites  
+- Tesseract OCR + office preview pipeline (last)
+- ClamAV integration + signature offline update policy
+- Remote SMB/NFS connector agent (bukan local mountPath sahaja)
+- Full UI/UX spec (BM/EN, design system, explorer states)
+- Offline signed release bundle + install wizard
+- Testcontainers / Playwright / k6 at scale
 
-See [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md) for phase gates.
+See [DEVELOPMENT_ROADMAP.md](./DEVELOPMENT_ROADMAP.md).

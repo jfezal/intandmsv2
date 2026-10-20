@@ -27,8 +27,9 @@ model User {
 
   passwordCredential PasswordCredential?
   sessions           Session[]
-  userRoles          UserRole[]
-  authEvents         AuthEvent[]
+  userRoles              UserRole[]
+  scopedRoleAssignments  ScopedRoleAssignment[]
+  authEvents             AuthEvent[]
 
   @@map("users")
 }
@@ -69,7 +70,8 @@ model Role {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   rolePermissions RolePermission[]
-  userRoles       UserRole[]
+  userRoles              UserRole[]
+  scopedRoleAssignments  ScopedRoleAssignment[]
 
   @@map("roles")
 }
@@ -105,6 +107,23 @@ model UserRole {
 
   @@id([userId, roleId])
   @@map("user_roles")
+}
+
+model ScopedRoleAssignment {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  repositoryId String?  @map("repository_id") @db.Uuid
+  folderId     String?  @map("folder_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  folder     Folder?     @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, repositoryId])
+  @@map("scoped_role_assignments")
 }
 
 model AuthEvent {
@@ -188,8 +207,11 @@ model Repository {
   updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   storageConnection StorageConnection @relation(fields: [storageConnectionId], references: [id])
-  folders           Folder[]
-  documents         Document[]
+  folders                 Folder[]
+  documents               Document[]
+  scopedRoleAssignments   ScopedRoleAssignment[]
+  sourceObservations      SourceObservation[]
+  scanCheckpoints         ScanCheckpoint[]
 
   @@map("repositories")
 }
@@ -207,7 +229,8 @@ model Folder {
   repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   parent     Folder?    @relation("FolderTree", fields: [parentId], references: [id])
   children   Folder[]   @relation("FolderTree")
-  documents  Document[]
+  documents               Document[]
+  scopedRoleAssignments   ScopedRoleAssignment[]
 
   @@unique([repositoryId, relativePath])
   @@index([repositoryId, parentId])
@@ -240,11 +263,32 @@ model StorageObject {
   sha256     String   @db.VarChar(64)
   sizeBytes  BigInt   @map("size_bytes")
   mimeType   String   @map("mime_type") @db.VarChar(128)
+  scanStatus String   @default("pending") @map("scan_status") @db.VarChar(32)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  versions DocumentVersion[]
+  versions       DocumentVersion[]
+  uploadSessions UploadSession[]
 
   @@map("storage_objects")
+}
+
+model UploadSession {
+  id              String    @id @default(uuid()) @db.Uuid
+  repositoryId    String    @map("repository_id") @db.Uuid
+  folderId        String?   @map("folder_id") @db.Uuid
+  displayName     String    @map("display_name") @db.VarChar(512)
+  mimeType        String    @map("mime_type") @db.VarChar(128)
+  status          String    @default("quarantine") @db.VarChar(32)
+  storageObjectId String?   @map("storage_object_id") @db.Uuid
+  documentId      String?   @map("document_id") @db.Uuid
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  storageObject StorageObject? @relation(fields: [storageObjectId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("upload_sessions")
 }
 
 model DocumentVersion {
@@ -287,6 +331,7 @@ model IndexedConnector {
   protocol       String           @db.VarChar(16)
   host           String           @db.VarChar(256)
   exportPath     String           @map("export_path") @db.VarChar(512)
+  mountPath      String?          @map("mount_path") @db.VarChar(512)
   readOnly       Boolean          @default(true) @map("read_only")
   status         RepositoryStatus @default(ACTIVE)
   lastHealthAt   DateTime?        @map("last_health_at") @db.Timestamptz(6)
@@ -296,15 +341,82 @@ model IndexedConnector {
   @@map("indexed_connectors")
 }
 
+model SourceObservation {
+  id              String   @id @default(uuid()) @db.Uuid
+  repositoryId    String   @map("repository_id") @db.Uuid
+  relativePath    String   @map("relative_path") @db.VarChar(1024)
+  sha256          String?  @db.VarChar(64)
+  sizeBytes       BigInt?  @map("size_bytes")
+  sourceState     String   @default("discovered") @map("source_state") @db.VarChar(32)
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  scanGeneration  Int      @default(0) @map("scan_generation")
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, relativePath])
+  @@index([repositoryId, sourceState])
+  @@map("source_observations")
+}
+
+model ScanCheckpoint {
+  id           String   @id @default(uuid()) @db.Uuid
+  repositoryId String   @map("repository_id") @db.Uuid
+  generation   Int      @default(0)
+  frontierPath String?  @map("frontier_path") @db.VarChar(1024)
+  status       String   @default("idle") @db.VarChar(32)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId])
+  @@map("scan_checkpoints")
+}
+
 model WorkflowDefinition {
-  id        String   @id @default(uuid()) @db.Uuid
-  key       String   @unique @db.VarChar(64)
-  name      String   @db.VarChar(256)
-  version   Int      @default(1)
+  id         String   @id @default(uuid()) @db.Uuid
+  key        String   @unique @db.VarChar(64)
+  name       String   @db.VarChar(256)
+  version    Int      @default(1)
   definition Json
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  instances WorkflowInstance[]
 
   @@map("workflow_definitions")
+}
+
+model WorkflowInstance {
+  id                 String   @id @default(uuid()) @db.Uuid
+  definitionId       String   @map("definition_id") @db.Uuid
+  documentId         String   @map("document_id") @db.Uuid
+  documentVersionId  String   @map("document_version_id") @db.Uuid
+  status             String   @default("in_progress") @db.VarChar(32)
+  createdByUserId    String   @map("created_by_user_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  definition WorkflowDefinition @relation(fields: [definitionId], references: [id])
+  tasks      WorkflowTask[]
+
+  @@index([documentId])
+  @@map("workflow_instances")
+}
+
+model WorkflowTask {
+  id                 String    @id @default(uuid()) @db.Uuid
+  instanceId         String    @map("instance_id") @db.Uuid
+  stepKey            String    @map("step_key") @db.VarChar(64)
+  assigneeUserId     String?   @map("assignee_user_id") @db.Uuid
+  status             String    @default("pending") @db.VarChar(32)
+  decision           String?   @db.VarChar(32)
+  comment            String?   @db.Text
+  dueAt              DateTime? @map("due_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  instance WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([assigneeUserId, status])
+  @@map("workflow_tasks")
 }
 
 model RetentionPolicy {
@@ -315,5 +427,46 @@ model RetentionPolicy {
   reportOnly  Boolean  @default(true) @map("report_only")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  assignments RetentionAssignment[]
+  holds       LegalHold[]
+
   @@map("retention_policies")
+}
+
+model RetentionAssignment {
+  id           String   @id @default(uuid()) @db.Uuid
+  policyId     String   @map("policy_id") @db.Uuid
+  repositoryId String   @map("repository_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  policy RetentionPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, repositoryId])
+  @@map("retention_assignments")
+}
+
+model LegalHold {
+  id         String   @id @default(uuid()) @db.Uuid
+  policyId   String   @map("policy_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  reason     String   @db.VarChar(512)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  policy RetentionPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, active])
+  @@map("legal_holds")
+}
+
+model PreviewArtifact {
+  id                String   @id @default(uuid()) @db.Uuid
+  documentVersionId String   @map("document_version_id") @db.Uuid
+  kind              String   @db.VarChar(32)
+  storageKey        String   @map("storage_key") @db.VarChar(1024)
+  mimeType          String   @map("mime_type") @db.VarChar(128)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([documentVersionId, kind])
+  @@map("preview_artifacts")
 }

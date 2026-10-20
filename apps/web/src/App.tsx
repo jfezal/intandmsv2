@@ -26,8 +26,26 @@ type DocumentRow = {
   currentVersion?: { id: string; mimeType: string; sequence: number };
 };
 
+let csrfToken: string | null = null;
+
+async function ensureCsrf(): Promise<string> {
+  if (csrfToken) {
+    return csrfToken;
+  }
+  const body = await fetch('/api/v1/auth/csrf', { credentials: 'include' }).then((r) => r.json()) as {
+    token: string;
+  };
+  csrfToken = body.token;
+  return csrfToken;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { credentials: 'include', ...init });
+  const method = (init?.method ?? 'GET').toUpperCase();
+  const headers = new Headers(init?.headers);
+  if (method !== 'GET' && method !== 'HEAD') {
+    headers.set('X-CSRF-Token', await ensureCsrf());
+  }
+  const response = await fetch(path, { credentials: 'include', ...init, headers });
   if (!response.ok) {
     const problem = (await response.json().catch(() => ({}))) as { detail?: string; title?: string };
     throw new Error(problem.detail ?? problem.title ?? `Request failed (${response.status})`);
@@ -75,6 +93,10 @@ export function App(): React.ReactElement {
     setFolders(folderRows);
     setDocuments(documentRows);
   }, [selectedRepoId]);
+
+  useEffect(() => {
+    void ensureCsrf().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     void api<MeUser>('/api/v1/auth/me')
@@ -164,6 +186,7 @@ export function App(): React.ReactElement {
     const response = await fetch(`/api/v1/repositories/${selectedRepoId}/documents/upload`, {
       method: 'POST',
       credentials: 'include',
+      headers: { 'X-CSRF-Token': await ensureCsrf() },
       body: form,
     });
     if (!response.ok) {

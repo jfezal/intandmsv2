@@ -11,11 +11,12 @@ import {
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthenticatedRequest, SessionAuthGuard } from '../auth/session-auth.guard';
+import { CsrfGuard } from '../../common/csrf.guard';
 import { DocumentsService } from './documents.service';
 
 @ApiTags('documents')
 @Controller('repositories/:repositoryId/documents')
-@UseGuards(SessionAuthGuard)
+@UseGuards(SessionAuthGuard, CsrfGuard)
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
@@ -26,6 +27,14 @@ export class DocumentsController {
     @Query('folderId') folderId?: string,
   ) {
     return this.documents.list(request.user!, repositoryId, folderId);
+  }
+
+  @Get('uploads/:uploadSessionId')
+  uploadStatus(
+    @Req() request: AuthenticatedRequest,
+    @Param('uploadSessionId') uploadSessionId: string,
+  ) {
+    return this.documents.getUploadSession(request.user!, uploadSessionId);
   }
 
   @Post('upload')
@@ -70,6 +79,17 @@ export class DocumentDownloadController {
       'Content-Disposition',
       `attachment; filename="${payload.displayName.replace(/"/g, '')}"`,
     );
+    return payload.bytes;
+  }
+
+  @Get(':documentId/preview')
+  async preview(
+    @Req() request: AuthenticatedRequest,
+    @Param('documentId') documentId: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const payload = await this.documents.preview(request.user!, documentId);
+    void reply.header('Content-Type', payload.mimeType);
     return payload.bytes;
   }
 }

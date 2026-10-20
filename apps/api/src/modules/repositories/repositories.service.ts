@@ -61,14 +61,61 @@ export class RepositoriesService {
     return this.toDto(repository);
   }
 
+  async createIndexed(
+    principal: AuthPrincipal,
+    input: { name: string; connectorId: string; description?: string },
+  ) {
+    if (!this.authz.hasPermission(principal, PERMISSIONS.REPOSITORIES_MANAGE)) {
+      throw forbidden();
+    }
+    const connector = await this.prisma.client.indexedConnector.findUnique({
+      where: { id: input.connectorId },
+    });
+    if (!connector?.mountPath) {
+      throw forbidden('Connector requires an approved local mountPath.');
+    }
+
+    const connection = await this.prisma.client.storageConnection.create({
+      data: {
+        name: `${input.name} indexed`,
+        provider: 'indexed_mount',
+        config: { connectorId: connector.id, mountPath: connector.mountPath },
+      },
+    });
+
+    const repository = await this.prisma.client.repository.create({
+      data: {
+        name: input.name,
+        description: input.description,
+        type: 'INDEXED',
+        storageConnectionId: connection.id,
+        rootRelativePath: connector.exportPath,
+      },
+      include: { storageConnection: true },
+    });
+
+    await this.prisma.client.scanCheckpoint.create({
+      data: { repositoryId: repository.id, status: 'idle' },
+    });
+
+    await this.prisma.client.outboxEvent.create({
+      data: {
+        aggregateType: 'repository',
+        aggregateId: repository.id,
+        eventType: 'repository.index_scan_requested',
+        payload: { repositoryId: repository.id },
+      },
+    });
+
+    return this.toDto(repository);
+  }
+
   async createFolder(
     principal: AuthPrincipal,
     repositoryId: string,
     input: { name: string; parentId?: string },
   ) {
-    if (!this.authz.hasPermission(principal, PERMISSIONS.DOCUMENTS_WRITE)) {
-      throw forbidden();
-    }
+    await this.authz.assertRepositoryPermission(principal, repositoryId, PERMISSIONS.DOCUMENTS_WRITE);
     const repository = await this.requireManaged(repositoryId);
     const parent = input.parentId
       ? await this.prisma.client.folder.findFirst({
@@ -105,9 +152,7 @@ export class RepositoriesService {
   }
 
   async listFolders(principal: AuthPrincipal, repositoryId: string, parentId?: string) {
-    if (!this.authz.hasPermission(principal, PERMISSIONS.DOCUMENTS_READ)) {
-      throw forbidden();
-    }
+    await this.authz.assertRepositoryPermission(principal, repositoryId, PERMISSIONS.DOCUMENTS_READ);
     await this.requireRepository(repositoryId);
     return this.prisma.client.folder.findMany({
       where: { repositoryId, parentId: parentId ?? null },

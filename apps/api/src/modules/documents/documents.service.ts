@@ -22,11 +22,9 @@ export class DocumentsService {
   }
 
   async list(principal: AuthPrincipal, repositoryId: string, folderId?: string) {
-    if (!this.authz.hasPermission(principal, PERMISSIONS.DOCUMENTS_READ)) {
-      throw forbidden();
-    }
+    await this.authz.assertRepositoryPermission(principal, repositoryId, PERMISSIONS.DOCUMENTS_READ);
     return this.prisma.client.document.findMany({
-      where: { repositoryId, folderId: folderId ?? null },
+      where: { repositoryId, folderId: folderId ?? null, lifecycleState: 'active' },
       orderBy: { displayName: 'asc' },
       include: { currentVersion: true },
     });
@@ -42,9 +40,7 @@ export class DocumentsService {
       stream: Readable;
     },
   ) {
-    if (!this.authz.hasPermission(principal, PERMISSIONS.DOCUMENTS_WRITE)) {
-      throw forbidden();
-    }
+    await this.authz.assertRepositoryPermission(principal, repositoryId, PERMISSIONS.DOCUMENTS_WRITE);
 
     const repository = await this.prisma.client.repository.findUnique({
       where: { id: repositoryId },
@@ -53,84 +49,90 @@ export class DocumentsService {
       throw forbidden('Managed active repository required.');
     }
 
-    const storageDir = `repos/${repository.id}/blobs`;
+    const storageDir = `quarantine/${repository.id}`;
     const published = await this.blobStore.publishStream(storageDir, input.stream);
 
-    const result = await this.prisma.client.$transaction(async (tx) => {
+    const session = await this.prisma.client.$transaction(async (tx) => {
       const storageObject = await tx.storageObject.create({
         data: {
           storageKey: published.storageKey,
           sha256: published.sha256,
           sizeBytes: BigInt(published.sizeBytes),
           mimeType: input.mimeType,
+          scanStatus: 'pending',
         },
       });
 
-      const document = await tx.document.create({
+      const uploadSession = await tx.uploadSession.create({
         data: {
           repositoryId,
           folderId: input.folderId,
           displayName: input.displayName,
-        },
-      });
-
-      const version = await tx.documentVersion.create({
-        data: {
-          documentId: document.id,
-          sequence: 1,
-          sha256: published.sha256,
-          sizeBytes: BigInt(published.sizeBytes),
           mimeType: input.mimeType,
+          status: 'quarantine',
           storageObjectId: storageObject.id,
           createdByUserId: principal.id,
         },
       });
 
-      const updated = await tx.document.update({
-        where: { id: document.id },
-        data: { currentVersionId: version.id },
-        include: { currentVersion: true },
-      });
-
       await tx.outboxEvent.create({
         data: {
-          aggregateType: 'document_version',
-          aggregateId: version.id,
-          eventType: 'document.version.index_requested',
-          payload: {
-            documentId: document.id,
-            versionId: version.id,
-            mimeType: input.mimeType,
-          },
+          aggregateType: 'upload_session',
+          aggregateId: uploadSession.id,
+          eventType: 'upload.scan_requested',
+          payload: { uploadSessionId: uploadSession.id },
         },
       });
 
-      return updated;
+      return uploadSession;
     });
 
     await this.authz.writeAudit(
       principal,
-      'document.upload',
-      'document',
-      result.id,
+      'document.upload.quarantine',
+      'upload_session',
+      session.id,
       'success',
-      { repositoryId, versionId: result.currentVersionId },
+      { repositoryId },
     );
 
-    return result;
+    return {
+      uploadSessionId: session.id,
+      status: session.status,
+      message: 'File accepted into quarantine; publication follows scan/index pipeline.',
+    };
+  }
+
+  async getUploadSession(principal: AuthPrincipal, uploadSessionId: string) {
+    const session = await this.prisma.client.uploadSession.findUnique({
+      where: { id: uploadSessionId },
+    });
+    if (!session) {
+      throw new NotFoundException('Upload session not found.');
+    }
+    await this.authz.assertRepositoryPermission(principal, session.repositoryId, PERMISSIONS.DOCUMENTS_READ);
+    return session;
   }
 
   async download(principal: AuthPrincipal, documentId: string) {
-    if (!this.authz.hasPermission(principal, PERMISSIONS.DOCUMENTS_READ)) {
-      throw forbidden();
-    }
-
     const document = await this.prisma.client.document.findUnique({
       where: { id: documentId },
-      include: { currentVersion: { include: { storageObject: true } } },
+      include: {
+        currentVersion: { include: { storageObject: true } },
+      },
     });
     if (!document?.currentVersion?.storageObject) {
       throw new NotFoundException('Document not found.');
+    }
+
+    await this.authz.assertRepositoryPermission(
+      principal,
+      document.repositoryId,
+      PERMISSIONS.DOCUMENTS_READ,
+    );
+
+    if (document.currentVersion.storageObject.scanStatus !== 'clean') {
+      throw forbidden('Document is not cleared for download.');
     }
 
     const bytes = await this.blobStore.readBytes(document.currentVersion.storageObject.storageKey);
@@ -148,5 +150,41 @@ export class DocumentsService {
       mimeType: document.currentVersion.mimeType,
       bytes,
     };
+  }
+
+  async preview(principal: AuthPrincipal, documentId: string) {
+    const document = await this.prisma.client.document.findUnique({
+      where: { id: documentId },
+      include: { currentVersion: { include: { storageObject: true } } },
+    });
+    if (!document?.currentVersion?.storageObject) {
+      throw new NotFoundException('Document not found.');
+    }
+    await this.authz.assertRepositoryPermission(
+      principal,
+      document.repositoryId,
+      PERMISSIONS.DOCUMENTS_READ,
+    );
+
+    const artifact = await this.prisma.client.previewArtifact.findUnique({
+      where: {
+        documentVersionId_kind: {
+          documentVersionId: document.currentVersion.id,
+          kind: 'inline',
+        },
+      },
+    });
+    if (artifact) {
+      const bytes = await this.blobStore.readBytes(artifact.storageKey);
+      return { mimeType: artifact.mimeType, bytes };
+    }
+
+    const mime = document.currentVersion.mimeType;
+    if (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/')) {
+      const bytes = await this.blobStore.readBytes(document.currentVersion.storageObject.storageKey);
+      return { mimeType: mime, bytes };
+    }
+
+    throw new NotFoundException('Preview not available for this format yet.');
   }
 }

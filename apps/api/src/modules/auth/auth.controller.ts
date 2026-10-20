@@ -14,6 +14,8 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { loginBodySchema } from '@intandms/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AppEnv } from '../../config/env.schema';
+import { CsrfGuard } from '../../common/csrf.guard';
+import { CsrfService } from '../../common/csrf.service';
 import { AuthService } from './auth.service';
 import { AuthenticatedRequest, SessionAuthGuard } from './session-auth.guard';
 
@@ -23,7 +25,21 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly config: ConfigService<AppEnv, true>,
+    private readonly csrf: CsrfService,
   ) {}
+
+  @Get('csrf')
+  @ApiOperation({ summary: 'Issue CSRF token (double-submit cookie)' })
+  csrfToken(@Res({ passthrough: true }) reply: FastifyReply): { token: string } {
+    const token = this.csrf.issueToken();
+    void reply.setCookie('intandms_csrf', token, {
+      httpOnly: false,
+      sameSite: 'lax',
+      path: '/',
+      secure: this.config.get('NODE_ENV', { infer: true }) === 'production',
+    });
+    return { token };
+  }
 
   @Get('bootstrap-status')
   @ApiOperation({ summary: 'Whether first administrator bootstrap is still allowed' })
@@ -32,6 +48,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @UseGuards(CsrfGuard)
   @HttpCode(200)
   @ApiOperation({ summary: 'Local username/password login' })
   async login(
