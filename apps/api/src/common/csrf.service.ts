@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AppEnv } from '../config/env.schema';
@@ -21,8 +21,9 @@ export class CsrfService {
     if (!nonce || !signature) {
       return false;
     }
-    const expected = this.sign(nonce);
-    return expected === signature;
+    const expected = Buffer.from(this.sign(nonce));
+    const actual = Buffer.from(signature);
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
   }
 
   private sign(nonce: string): string {

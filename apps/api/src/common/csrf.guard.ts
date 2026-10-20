@@ -13,15 +13,13 @@ export class CsrfGuard implements CanActivate {
       return true;
     }
 
+    // Browsers attach the cookie to forged requests automatically; only the custom header proves same-origin script.
     const headerToken =
       typeof request.headers['x-csrf-token'] === 'string'
         ? request.headers['x-csrf-token']
         : undefined;
-    const cookieToken =
-      typeof request.cookies?.intandms_csrf === 'string' ? request.cookies.intandms_csrf : undefined;
 
-    const token = headerToken ?? cookieToken;
-    if (!this.csrf.verifyToken(token)) {
+    if (!this.csrf.verifyToken(headerToken)) {
       throw new ForbiddenException('CSRF validation failed.');
     }
     return true;

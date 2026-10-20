@@ -23,6 +23,18 @@
 - API: `POST /connectors/:id/credentials`, `connect-test`, `mount` (forwards to gateway; passwords never stored in DB)
 - **Playwright** smoke: `npm run test:e2e` (login UI; optional API health when stack up)
 
+## Internal messaging (D-16, uncommitted)
+
+- Migration `20261020170000_messaging`: conversations, participants, messages, revisions, document links; triggers block message deletion and revision changes; `messages.audit` granted to the `auditor` role
+- API `/api/v1/messages/*`: user directory, direct/group/document conversations, send/edit/read, unread summary, `GET /messages/stream` (SSE, ids only, session re-checked every heartbeat, max 5 streams/user, Valkey channel `intandms:messages` or in-memory)
+- Investigation: `/messages/investigation/*?reason=` (reason 5–500 chars, audited `messages.investigate_list` / `messages.investigate_read`)
+- Web: `#/messages`, document discussion and "Share" in the explorer details panel, `#/admin/messages` (investigation)
+- Not yet covered: API integration tests for the two-user flow and non-member/non-auditor refusals (no API test harness yet)
+
+## Security fix (uncommitted)
+
+- CSRF: mutations now require the `X-CSRF-Token` header; the `intandms_csrf` cookie alone is refused (it is sent automatically on forged same-site requests). Signature check is constant-time. Unit test `apps/api/src/common/csrf.guard.test.ts`.
+
 ## Still open for full enterprise spec
 
 - NFS gateway mount + full gateway hardening checklist (NAS_CONNECTOR_ARCHITECTURE)

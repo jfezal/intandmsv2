@@ -25,21 +25,24 @@ model User {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  passwordCredential PasswordCredential?
-  sessions           Session[]
+  passwordCredential     PasswordCredential?
+  sessions               Session[]
   userRoles              UserRole[]
   scopedRoleAssignments  ScopedRoleAssignment[]
   authEvents             AuthEvent[]
+  conversationsCreated   Conversation[]            @relation("ConversationCreator")
+  conversationMembership ConversationParticipant[]
+  messagesSent           Message[]
 
   @@map("users")
 }
 
 model PasswordCredential {
-  userId              String   @id @map("user_id") @db.Uuid
-  algorithm           String   @default("argon2id") @db.VarChar(32)
-  passwordHash        String   @map("password_hash") @db.Text
-  passwordChangedAt   DateTime @default(now()) @map("password_changed_at") @db.Timestamptz(6)
-  mustResetPassword   Boolean  @default(false) @map("must_reset_password")
+  userId            String   @id @map("user_id") @db.Uuid
+  algorithm         String   @default("argon2id") @db.VarChar(32)
+  passwordHash      String   @map("password_hash") @db.Text
+  passwordChangedAt DateTime @default(now()) @map("password_changed_at") @db.Timestamptz(6)
+  mustResetPassword Boolean  @default(false) @map("must_reset_password")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -67,11 +70,13 @@ model Role {
   id          String   @id @default(uuid()) @db.Uuid
   key         String   @unique @db.VarChar(64)
   displayName String   @map("display_name") @db.VarChar(128)
+  description String?  @db.Text
+  isSystem    Boolean  @default(false) @map("is_system")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  rolePermissions RolePermission[]
-  userRoles              UserRole[]
-  scopedRoleAssignments  ScopedRoleAssignment[]
+  rolePermissions       RolePermission[]
+  userRoles             UserRole[]
+  scopedRoleAssignments ScopedRoleAssignment[]
 
   @@map("roles")
 }
@@ -110,12 +115,13 @@ model UserRole {
 }
 
 model ScopedRoleAssignment {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @map("user_id") @db.Uuid
-  roleId       String   @map("role_id") @db.Uuid
-  repositoryId String?  @map("repository_id") @db.Uuid
-  folderId     String?  @map("folder_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  roleId          String   @map("role_id") @db.Uuid
+  repositoryId    String?  @map("repository_id") @db.Uuid
+  folderId        String?  @map("folder_id") @db.Uuid
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -123,6 +129,7 @@ model ScopedRoleAssignment {
   folder     Folder?     @relation(fields: [folderId], references: [id], onDelete: Cascade)
 
   @@index([userId, repositoryId])
+  @@index([folderId])
   @@map("scoped_role_assignments")
 }
 
@@ -155,15 +162,15 @@ model OutboxEvent {
 }
 
 model AuditEvent {
-  id           String   @id @default(uuid()) @db.Uuid
-  actorUserId  String?  @map("actor_user_id") @db.Uuid
-  action       String   @db.VarChar(128)
-  targetType   String?  @map("target_type") @db.VarChar(64)
-  targetId     String?  @map("target_id") @db.VarChar(64)
-  outcome      String   @db.VarChar(32)
-  requestId    String?  @map("request_id") @db.VarChar(64)
-  metadata     Json?
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String   @db.VarChar(128)
+  targetType  String?  @map("target_type") @db.VarChar(64)
+  targetId    String?  @map("target_id") @db.VarChar(64)
+  outcome     String   @db.VarChar(32)
+  requestId   String?  @map("request_id") @db.VarChar(64)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([createdAt])
   @@index([actorUserId])
@@ -202,38 +209,40 @@ model Repository {
   status              RepositoryStatus @default(ACTIVE)
   storageConnectionId String           @map("storage_connection_id") @db.Uuid
   rootRelativePath    String           @map("root_relative_path") @db.VarChar(512)
+  scanIntervalMinutes Int?             @map("scan_interval_minutes")
   revision            Int              @default(0)
   createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  storageConnection StorageConnection @relation(fields: [storageConnectionId], references: [id])
-  folders                 Folder[]
-  documents               Document[]
-  scopedRoleAssignments   ScopedRoleAssignment[]
-  sourceObservations      SourceObservation[]
-  scanCheckpoints         ScanCheckpoint[]
+  storageConnection     StorageConnection      @relation(fields: [storageConnectionId], references: [id])
+  folders               Folder[]
+  documents             Document[]
+  scopedRoleAssignments ScopedRoleAssignment[]
+  sourceObservations    SourceObservation[]
+  scanCheckpoints       ScanCheckpoint[]
 
   @@map("repositories")
 }
 
 model Folder {
-  id             String   @id @default(uuid()) @db.Uuid
-  repositoryId   String   @map("repository_id") @db.Uuid
-  parentId       String?  @map("parent_id") @db.Uuid
-  name           String   @db.VarChar(256)
-  relativePath   String   @map("relative_path") @db.VarChar(1024)
-  revision       Int      @default(0)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String   @id @default(uuid()) @db.Uuid
+  repositoryId String   @map("repository_id") @db.Uuid
+  parentId     String?  @map("parent_id") @db.Uuid
+  name         String   @db.VarChar(256)
+  relativePath String   @map("relative_path") @db.VarChar(1024)
+  revision     Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  parent     Folder?    @relation("FolderTree", fields: [parentId], references: [id])
-  children   Folder[]   @relation("FolderTree")
-  documents               Document[]
-  scopedRoleAssignments   ScopedRoleAssignment[]
+  repository            Repository             @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  parent                Folder?                @relation("FolderTree", fields: [parentId], references: [id])
+  children              Folder[]               @relation("FolderTree")
+  documents             Document[]
+  scopedRoleAssignments ScopedRoleAssignment[]
 
   @@unique([repositoryId, relativePath])
   @@index([repositoryId, parentId])
+  @@index([parentId])
   @@map("folders")
 }
 
@@ -252,6 +261,8 @@ model Document {
   folder         Folder?           @relation(fields: [folderId], references: [id])
   versions       DocumentVersion[] @relation("DocumentVersions")
   currentVersion DocumentVersion?  @relation("CurrentDocumentVersion", fields: [currentVersionId], references: [id])
+  discussion     Conversation?
+  messageLinks   MessageDocument[]
 
   @@index([repositoryId, folderId])
   @@map("documents")
@@ -345,14 +356,14 @@ model IndexedConnector {
 }
 
 model SourceObservation {
-  id              String   @id @default(uuid()) @db.Uuid
-  repositoryId    String   @map("repository_id") @db.Uuid
-  relativePath    String   @map("relative_path") @db.VarChar(1024)
-  sha256          String?  @db.VarChar(64)
-  sizeBytes       BigInt?  @map("size_bytes")
-  sourceState     String   @default("discovered") @map("source_state") @db.VarChar(32)
-  lastSeenAt      DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
-  scanGeneration  Int      @default(0) @map("scan_generation")
+  id             String   @id @default(uuid()) @db.Uuid
+  repositoryId   String   @map("repository_id") @db.Uuid
+  relativePath   String   @map("relative_path") @db.VarChar(1024)
+  sha256         String?  @db.VarChar(64)
+  sizeBytes      BigInt?  @map("size_bytes")
+  sourceState    String   @default("discovered") @map("source_state") @db.VarChar(32)
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  scanGeneration Int      @default(0) @map("scan_generation")
 
   repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 
@@ -362,12 +373,16 @@ model SourceObservation {
 }
 
 model ScanCheckpoint {
-  id           String   @id @default(uuid()) @db.Uuid
-  repositoryId String   @map("repository_id") @db.Uuid
-  generation   Int      @default(0)
-  frontierPath String?  @map("frontier_path") @db.VarChar(1024)
-  status       String   @default("idle") @db.VarChar(32)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String    @id @default(uuid()) @db.Uuid
+  repositoryId    String    @map("repository_id") @db.Uuid
+  generation      Int       @default(0)
+  frontierPath    String?   @map("frontier_path") @db.VarChar(1024)
+  status          String    @default("idle") @db.VarChar(32)
+  lastStartedAt   DateTime? @map("last_started_at") @db.Timestamptz(6)
+  lastCompletedAt DateTime? @map("last_completed_at") @db.Timestamptz(6)
+  lastError       String?   @map("last_error") @db.VarChar(1024)
+  filesSeen       Int       @default(0) @map("files_seen")
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 
@@ -389,13 +404,13 @@ model WorkflowDefinition {
 }
 
 model WorkflowInstance {
-  id                 String   @id @default(uuid()) @db.Uuid
-  definitionId       String   @map("definition_id") @db.Uuid
-  documentId         String   @map("document_id") @db.Uuid
-  documentVersionId  String   @map("document_version_id") @db.Uuid
-  status             String   @default("in_progress") @db.VarChar(32)
-  createdByUserId    String   @map("created_by_user_id") @db.Uuid
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                String   @id @default(uuid()) @db.Uuid
+  definitionId      String   @map("definition_id") @db.Uuid
+  documentId        String   @map("document_id") @db.Uuid
+  documentVersionId String   @map("document_version_id") @db.Uuid
+  status            String   @default("in_progress") @db.VarChar(32)
+  createdByUserId   String   @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   definition WorkflowDefinition @relation(fields: [definitionId], references: [id])
   tasks      WorkflowTask[]
@@ -405,16 +420,16 @@ model WorkflowInstance {
 }
 
 model WorkflowTask {
-  id                 String    @id @default(uuid()) @db.Uuid
-  instanceId         String    @map("instance_id") @db.Uuid
-  stepKey            String    @map("step_key") @db.VarChar(64)
-  assigneeUserId     String?   @map("assignee_user_id") @db.Uuid
-  status             String    @default("pending") @db.VarChar(32)
-  decision           String?   @db.VarChar(32)
-  comment            String?   @db.Text
-  dueAt              DateTime? @map("due_at") @db.Timestamptz(6)
-  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id             String    @id @default(uuid()) @db.Uuid
+  instanceId     String    @map("instance_id") @db.Uuid
+  stepKey        String    @map("step_key") @db.VarChar(64)
+  assigneeUserId String?   @map("assignee_user_id") @db.Uuid
+  status         String    @default("pending") @db.VarChar(32)
+  decision       String?   @db.VarChar(32)
+  comment        String?   @db.Text
+  dueAt          DateTime? @map("due_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   instance WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
 
@@ -422,13 +437,104 @@ model WorkflowTask {
   @@map("workflow_tasks")
 }
 
+enum ConversationKind {
+  DIRECT
+  GROUP
+  DOCUMENT
+}
+
+/// Messages are official records (D-16): never deleted through the product; edits keep revisions.
+model Conversation {
+  id              String           @id @default(uuid()) @db.Uuid
+  kind            ConversationKind
+  title           String?          @db.VarChar(200)
+  /// DIRECT only: the two user ids sorted and joined with ':' so a pair has one conversation.
+  directKey       String?          @unique @map("direct_key") @db.VarChar(80)
+  documentId      String?          @unique @map("document_id") @db.Uuid
+  createdByUserId String           @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastMessageAt   DateTime?        @map("last_message_at") @db.Timestamptz(6)
+
+  document     Document?                 @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  createdBy    User                      @relation("ConversationCreator", fields: [createdByUserId], references: [id])
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  conversationId String    @map("conversation_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  /// owner | member for DIRECT/GROUP; follower for DOCUMENT (access is still checked live).
+  role           String    @default("member") @db.VarChar(16)
+  joinedAt       DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  leftAt         DateTime? @map("left_at") @db.Timestamptz(6)
+  lastReadAt     DateTime? @map("last_read_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@id([conversationId, userId])
+  @@index([userId, leftAt])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  /// Null for system events (member added/removed, renamed).
+  senderUserId   String?   @map("sender_user_id") @db.Uuid
+  kind           String    @default("text") @db.VarChar(16)
+  body           String    @db.Text
+  metadata       Json?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  editedAt       DateTime? @map("edited_at") @db.Timestamptz(6)
+
+  conversation Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?             @relation(fields: [senderUserId], references: [id], onDelete: Restrict)
+  revisions    MessageRevision[]
+  documents    MessageDocument[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model MessageRevision {
+  id         String   @id @default(uuid()) @db.Uuid
+  messageId  String   @map("message_id") @db.Uuid
+  /// The body as it was before the edit at `replacedAt`.
+  body       String   @db.Text
+  replacedAt DateTime @default(now()) @map("replaced_at") @db.Timestamptz(6)
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_revisions")
+}
+
+/// A document shared as a link; readers only see it when they can read the document themselves.
+model MessageDocument {
+  id         String  @id @default(uuid()) @db.Uuid
+  messageId  String  @map("message_id") @db.Uuid
+  documentId String? @map("document_id") @db.Uuid
+
+  message  Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@index([documentId])
+  @@map("message_documents")
+}
+
 model RetentionPolicy {
-  id          String   @id @default(uuid()) @db.Uuid
-  key         String   @unique @db.VarChar(64)
-  name        String   @db.VarChar(256)
-  rule        Json
-  reportOnly  Boolean  @default(true) @map("report_only")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String   @id @default(uuid()) @db.Uuid
+  key        String   @unique @db.VarChar(64)
+  name       String   @db.VarChar(256)
+  rule       Json
+  reportOnly Boolean  @default(true) @map("report_only")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   assignments RetentionAssignment[]
   holds       LegalHold[]

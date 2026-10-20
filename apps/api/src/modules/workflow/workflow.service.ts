@@ -13,17 +13,15 @@ export class WorkflowService {
   ) {}
 
   async startReview(principal: AuthPrincipal, documentId: string) {
-    if (!this.authz.hasPermission(principal, PERMISSIONS.DOCUMENTS_WRITE)) {
-      throw forbidden();
-    }
-
     const document = await this.prisma.client.document.findUnique({
       where: { id: documentId },
       include: { currentVersion: true },
     });
-    if (!document?.currentVersion) {
+    const location = document ? { repositoryId: document.repositoryId, folderId: document.folderId } : null;
+    if (!document?.currentVersion || !location || !(await this.authz.can(principal, PERMISSIONS.DOCUMENTS_READ, location))) {
       throw new NotFoundException('Document not found.');
     }
+    await this.authz.assertCan(principal, PERMISSIONS.DOCUMENTS_WRITE, location);
 
     const definition = await this.prisma.client.workflowDefinition.findUnique({
       where: { key: 'default-review' },
@@ -90,10 +88,45 @@ export class WorkflowService {
   }
 
   async myTasks(principal: AuthPrincipal) {
-    return this.prisma.client.workflowTask.findMany({
+    const tasks = await this.prisma.client.workflowTask.findMany({
       where: { assigneeUserId: principal.id, status: 'pending' },
       orderBy: { createdAt: 'desc' },
-      include: { instance: true },
+      include: { instance: { include: { definition: { select: { key: true, name: true } } } } },
+    });
+    const documentIds = [...new Set(tasks.map((task) => task.instance.documentId))];
+    const requesterIds = [...new Set(tasks.map((task) => task.instance.createdByUserId))];
+    const [documents, requesters] = await Promise.all([
+      documentIds.length
+        ? this.prisma.client.document.findMany({
+            where: { id: { in: documentIds } },
+            select: { id: true, displayName: true, repositoryId: true, folderId: true, repository: { select: { name: true } } },
+          })
+        : [],
+      requesterIds.length
+        ? this.prisma.client.user.findMany({
+            where: { id: { in: requesterIds } },
+            select: { id: true, login: true, displayName: true },
+          })
+        : [],
+    ]);
+    const documentById = new Map(documents.map((document) => [document.id, document]));
+    const requesterById = new Map(requesters.map((user) => [user.id, user]));
+    return tasks.map((task) => {
+      const document = documentById.get(task.instance.documentId);
+      const requester = requesterById.get(task.instance.createdByUserId);
+      return {
+        ...task,
+        document: document
+          ? {
+              id: document.id,
+              displayName: document.displayName,
+              repositoryId: document.repositoryId,
+              repositoryName: document.repository.name,
+              folderId: document.folderId,
+            }
+          : null,
+        requestedBy: requester ? { login: requester.login, displayName: requester.displayName } : null,
+      };
     });
   }
 }

@@ -1,358 +1,238 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { type Locale, t } from './i18n';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Shell } from './components/Shell';
+import { Alert, Button, Spinner } from './components/ui';
+import { I18nContext, type Locale, type MessageKey, translate } from './i18n';
+import {
+  ApiError,
+  api,
+  ensureCsrf,
+  setPasswordChangeRequiredHandler,
+  type MeUser,
+  type Repository,
+  type WorkflowTask,
+} from './lib/api';
+import { useRoute } from './lib/route';
+import { AuditPage, MessageInvestigationPage, RepositoriesPage, RolesPage, StoragePage, UsersPage } from './pages/AdminPages';
+import { MessagesPage } from './pages/messages/MessagesPage';
+import { useMessageEvents, useMessageStream } from './lib/messageStream';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { ExplorerPage } from './pages/explorer/ExplorerPage';
+import { LoginPage } from './pages/LoginPage';
+import { SearchPage } from './pages/SearchPage';
+import { TasksPage } from './pages/TasksPage';
 
-type MeUser = {
-  id: string;
-  login: string;
-  displayName: string;
-  permissions: string[];
-};
+type SessionState = { kind: 'checking' } | { kind: 'anonymous'; notice?: string } | { kind: 'offline' } | { kind: 'signed-in'; user: MeUser };
 
-type Repository = {
-  id: string;
-  name: string;
-  type: string;
-  capabilities: { upload: boolean; physicalWrite: boolean };
-};
-
-type Folder = {
-  id: string;
-  name: string;
-  relativePath: string;
-};
-
-type DocumentRow = {
-  id: string;
-  displayName: string;
-  currentVersion?: { id: string; mimeType: string; sequence: number };
-};
-
-let csrfToken: string | null = null;
-
-async function ensureCsrf(): Promise<string> {
-  if (csrfToken) {
-    return csrfToken;
-  }
-  const body = await fetch('/api/v1/auth/csrf', { credentials: 'include' }).then((r) => r.json()) as {
-    token: string;
-  };
-  csrfToken = body.token;
-  return csrfToken;
-}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const method = (init?.method ?? 'GET').toUpperCase();
-  const headers = new Headers(init?.headers);
-  if (method !== 'GET' && method !== 'HEAD') {
-    headers.set('X-CSRF-Token', await ensureCsrf());
-  }
-  const response = await fetch(path, { credentials: 'include', ...init, headers });
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => ({}))) as { detail?: string; title?: string };
-    throw new Error(problem.detail ?? problem.title ?? `Request failed (${response.status})`);
-  }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return (await response.json()) as T;
+function initialLocale(): Locale {
+  const stored = localStorage.getItem('intandms.locale');
+  return stored === 'en' || stored === 'ms' ? stored : 'ms';
 }
 
 export function App(): React.ReactElement {
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [user, setUser] = useState<MeUser | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [locale, setLocale] = useState<Locale>(initialLocale);
+  const [session, setSession] = useState<SessionState>({ kind: 'checking' });
+  const [repositories, setRepositories] = useState<Repository[] | null>(null);
+  const [tasks, setTasks] = useState<WorkflowTask[] | null>(null);
+  const route = useRoute();
 
-  const [repositories, setRepositories] = useState<Repository[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<string>('');
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [documents, setDocuments] = useState<DocumentRow[]>([]);
-  const [newRepoName, setNewRepoName] = useState('');
-  const [newFolderName, setNewFolderName] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchHits, setSearchHits] = useState<Array<{ documentId: string; displayName: string; snippet: string }>>(
-    [],
+  const i18n = useMemo(
+    () => ({ locale, t: (key: MessageKey, vars?: Record<string, string | number>) => translate(locale, key, vars) }),
+    [locale],
   );
-  const [locale, setLocale] = useState<Locale>('ms');
-  const [tasks, setTasks] = useState<Array<{ id: string; stepKey: string; status: string }>>([]);
-
-  const refreshRepositories = useCallback(async () => {
-    const rows = await api<Repository[]>('/api/v1/repositories');
-    setRepositories(rows);
-    if (!selectedRepoId && rows[0]) {
-      setSelectedRepoId(rows[0].id);
-    }
-  }, [selectedRepoId]);
-
-  const refreshDocuments = useCallback(async () => {
-    if (!selectedRepoId) {
-      return;
-    }
-    const [folderRows, documentRows] = await Promise.all([
-      api<Folder[]>(`/api/v1/repositories/${selectedRepoId}/folders`),
-      api<DocumentRow[]>(`/api/v1/repositories/${selectedRepoId}/documents`),
-    ]);
-    setFolders(folderRows);
-    setDocuments(documentRows);
-  }, [selectedRepoId]);
 
   useEffect(() => {
-    void ensureCsrf().catch(() => undefined);
-  }, []);
+    localStorage.setItem('intandms.locale', locale);
+    document.documentElement.lang = locale === 'ms' ? 'ms-MY' : 'en';
+  }, [locale]);
 
-  useEffect(() => {
-    void api<MeUser>('/api/v1/auth/me')
-      .then(setUser)
-      .catch(() => setUser(null));
-  }, []);
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-    void refreshRepositories().catch((refreshError: unknown) => {
-      setError(refreshError instanceof Error ? refreshError.message : 'Failed to load repositories.');
-    });
-  }, [user, refreshRepositories]);
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-    void api<Array<{ id: string; stepKey: string; status: string }>>('/api/v1/workflow/tasks/mine')
-      .then(setTasks)
-      .catch(() => setTasks([]));
-  }, [user]);
-
-  useEffect(() => {
-    if (!user || !selectedRepoId) {
-      return;
-    }
-    void refreshDocuments().catch((refreshError: unknown) => {
-      setError(refreshError instanceof Error ? refreshError.message : 'Failed to load documents.');
-    });
-  }, [user, selectedRepoId, refreshDocuments]);
-
-  async function onSubmit(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
+  const checkSession = useCallback(async () => {
+    setSession({ kind: 'checking' });
     try {
-      const body = await api<{ user: MeUser }>('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login, password }),
-      });
-      setUser(body.user);
-      setPassword('');
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Login failed.');
-    } finally {
-      setLoading(false);
+      await ensureCsrf();
+      const user = await api<MeUser>('/api/v1/auth/me');
+      setSession({ kind: 'signed-in', user });
+    } catch (error) {
+      const unauthenticated = error instanceof ApiError && (error.status === 401 || error.status === 403);
+      setSession(unauthenticated ? { kind: 'anonymous' } : { kind: 'offline' });
     }
-  }
+  }, []);
 
-  async function onLogout(): Promise<void> {
-    await api<void>('/api/v1/auth/logout', { method: 'POST' });
-    setUser(null);
-  }
+  useEffect(() => {
+    void checkSession();
+  }, [checkSession]);
 
-  async function createRepository(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    if (!newRepoName.trim()) {
-      return;
-    }
-    await api('/api/v1/repositories', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newRepoName.trim(),
-        rootRelativePath: newRepoName.trim().toLowerCase().replace(/\s+/g, '-'),
-      }),
-    });
-    setNewRepoName('');
-    await refreshRepositories();
-  }
+  const signedIn = session.kind === 'signed-in' && !session.user.mustChangePassword;
 
-  async function createFolder(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    if (!selectedRepoId || !newFolderName.trim()) {
-      return;
-    }
-    await api(`/api/v1/repositories/${selectedRepoId}/folders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newFolderName.trim() }),
-    });
-    setNewFolderName('');
-    await refreshDocuments();
-  }
-
-  async function onUpload(file: File | null): Promise<void> {
-    if (!file || !selectedRepoId) {
-      return;
-    }
-    const form = new FormData();
-    form.append('file', file);
-    const response = await fetch(`/api/v1/repositories/${selectedRepoId}/documents/upload`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-CSRF-Token': await ensureCsrf() },
-      body: form,
-    });
-    if (!response.ok) {
-      throw new Error('Upload failed.');
-    }
-    await refreshDocuments();
-  }
-
-  async function runSearch(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    const hits = await api<{ items: Array<{ documentId: string; displayName: string; snippet: string }> }>(
-      `/api/v1/search?q=${encodeURIComponent(searchQuery)}&repositoryId=${encodeURIComponent(selectedRepoId)}`,
-    );
-    setSearchHits(hits.items);
-  }
-
-  if (!user) {
-    return (
-      <main className="shell">
-        <header>
-          <h1>{t(locale, 'title')}</h1>
-          <p>{t(locale, 'signIn')}</p>
-        </header>
-        <form className="panel" onSubmit={(event) => void onSubmit(event)}>
-          <label>
-            Login
-            <input value={login} onChange={(event) => setLogin(event.target.value)} autoComplete="username" />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={loading}>
-            {loading ? '…' : t(locale, 'signIn')}
-          </button>
-        </form>
-      </main>
-    );
-  }
-
-  return (
-    <main className="shell wide">
-      <header className="row">
-        <div>
-          <h1>{t(locale, 'title')}</h1>
-          <p>
-            {user.displayName} ({user.login})
-          </p>
-        </div>
-        <div className="row">
-          <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
-            <option value="ms">BM</option>
-            <option value="en">EN</option>
-          </select>
-          <button type="button" onClick={() => void onLogout()}>
-            {t(locale, 'logout')}
-          </button>
-        </div>
-      </header>
-
-      {error ? <p className="error">{error}</p> : null}
-
-      <section className="panel">
-        <h2>{t(locale, 'repositories')}</h2>
-        <div className="row">
-          <select value={selectedRepoId} onChange={(event) => setSelectedRepoId(event.target.value)}>
-            {repositories.map((repo) => (
-              <option key={repo.id} value={repo.id}>
-                {repo.name} ({repo.type})
-              </option>
-            ))}
-          </select>
-        </div>
-        <form className="row" onSubmit={(event) => void createRepository(event)}>
-          <input
-            placeholder="New managed repository name"
-            value={newRepoName}
-            onChange={(event) => setNewRepoName(event.target.value)}
-          />
-          <button type="submit">Create</button>
-        </form>
-      </section>
-
-      <section className="panel">
-        <h2>{t(locale, 'explorer')}</h2>
-        <form className="row" onSubmit={(event) => void createFolder(event)}>
-          <input
-            placeholder="New folder"
-            value={newFolderName}
-            onChange={(event) => setNewFolderName(event.target.value)}
-          />
-          <button type="submit">Add folder</button>
-        </form>
-        <ul>
-          {folders.map((folder) => (
-            <li key={folder.id}>{folder.relativePath}</li>
-          ))}
-        </ul>
-        <label className="upload">
-          Upload file
-          <input
-            type="file"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              void onUpload(file).catch((uploadError: unknown) => {
-                setError(uploadError instanceof Error ? uploadError.message : 'Upload failed.');
-              });
-            }}
-          />
-        </label>
-        <ul>
-          {documents.map((doc) => (
-            <li key={doc.id}>
-              {doc.displayName}{' '}
-              <a href={`/api/v1/documents/${doc.id}/download`} target="_blank" rel="noreferrer">
-                Download
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="panel">
-        <h2>{t(locale, 'search')}</h2>
-        <form className="row" onSubmit={(event) => void runSearch(event)}>
-          <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Query" />
-          <button type="submit">Search</button>
-        </form>
-        <ul>
-          {searchHits.map((hit) => (
-            <li key={hit.documentId}>
-              <strong>{hit.displayName}</strong>
-              <div className="muted">{hit.snippet}</div>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="panel">
-        <h2>{t(locale, 'workflowTasks')}</h2>
-        <ul>
-          {tasks.map((task) => (
-            <li key={task.id}>
-              {task.stepKey} — {task.status}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+  const handleAuthError = useCallback(
+    (error: unknown) => {
+      if (error instanceof ApiError && error.status === 401) {
+        setSession({ kind: 'anonymous', notice: i18n.t('sessionExpired') });
+        setRepositories(null);
+        setTasks(null);
+      }
+    },
+    [i18n],
   );
+
+  const loadRepositories = useCallback(async () => {
+    try {
+      setRepositories(await api<Repository[]>('/api/v1/repositories'));
+    } catch (error) {
+      handleAuthError(error);
+      setRepositories([]);
+    }
+  }, [handleAuthError]);
+
+  const loadTasks = useCallback(async () => {
+    try {
+      setTasks(await api<WorkflowTask[]>('/api/v1/workflow/tasks/mine'));
+    } catch (error) {
+      handleAuthError(error);
+      setTasks([]);
+    }
+  }, [handleAuthError]);
+
+  const [unreadConversations, setUnreadConversations] = useState(0);
+  const unreadTimer = useRef<number | undefined>(undefined);
+  const loadUnread = useCallback(() => {
+    window.clearTimeout(unreadTimer.current);
+    unreadTimer.current = window.setTimeout(() => {
+      api<{ unreadConversations: number }>('/api/v1/messages/unread')
+        .then((summary) => setUnreadConversations(summary.unreadConversations))
+        .catch(handleAuthError);
+    }, 250);
+  }, [handleAuthError]);
+
+  useMessageStream(signedIn);
+  useMessageEvents(() => {
+    if (signedIn) loadUnread();
+  });
+
+  useEffect(() => {
+    if (!signedIn) {
+      setUnreadConversations(0);
+      return;
+    }
+    void loadRepositories();
+    void loadTasks();
+    loadUnread();
+  }, [signedIn, loadRepositories, loadTasks, loadUnread]);
+
+  useEffect(() => {
+    setPasswordChangeRequiredHandler(() =>
+      setSession((current) =>
+        current.kind === 'signed-in' ? { kind: 'signed-in', user: { ...current.user, mustChangePassword: true } } : current,
+      ),
+    );
+    return () => setPasswordChangeRequiredHandler(null);
+  }, []);
+
+  async function login(loginName: string, password: string) {
+    const body = await api<{ user: MeUser }>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ login: loginName, password }),
+    });
+    const user = await api<MeUser>('/api/v1/auth/me').catch(() => body.user);
+    setSession({ kind: 'signed-in', user });
+  }
+
+  async function passwordChanged() {
+    const user = await api<MeUser>('/api/v1/auth/me');
+    setSession({ kind: 'signed-in', user });
+  }
+
+  async function logout() {
+    await api<void>('/api/v1/auth/logout', { method: 'POST' }).catch(() => undefined);
+    setRepositories(null);
+    setTasks(null);
+    setSession({ kind: 'anonymous' });
+  }
+
+  let content: React.ReactNode;
+  if (session.kind === 'checking') {
+    content = (
+      <div className="boot">
+        <Spinner label={i18n.t('loading')} />
+      </div>
+    );
+  } else if (session.kind === 'offline') {
+    content = (
+      <div className="boot">
+        <Alert tone="danger" title={i18n.t('serverUnreachable')} action={<Button onClick={() => void checkSession()}>{i18n.t('retryAction')}</Button>} />
+      </div>
+    );
+  } else if (session.kind === 'anonymous') {
+    content = <LoginPage onLogin={login} locale={locale} onLocaleChange={setLocale} notice={session.notice} />;
+  } else if (session.user.mustChangePassword) {
+    content = (
+      <ChangePasswordPage
+        displayName={session.user.displayName}
+        forced
+        onDone={() => void passwordChanged()}
+        onLogout={() => void logout()}
+      />
+    );
+  } else {
+    const { user } = session;
+    let page: React.ReactNode;
+    switch (route.name) {
+      case 'documents':
+        page = (
+          <ExplorerPage
+            user={user}
+            repositories={repositories}
+            repositoryId={route.repositoryId}
+            folderId={route.folderId}
+            onRepositoriesChanged={loadRepositories}
+            onTasksChanged={() => void loadTasks()}
+          />
+        );
+        break;
+      case 'search':
+        page = <SearchPage initialQuery={route.q} repositories={repositories} />;
+        break;
+      case 'tasks':
+        page = <TasksPage tasks={tasks} taskId={route.taskId} onChanged={() => void loadTasks()} />;
+        break;
+      case 'messages':
+        page = <MessagesPage user={user} conversationId={route.conversationId} />;
+        break;
+      case 'admin-messages':
+        page = <MessageInvestigationPage />;
+        break;
+      case 'admin-users':
+        page = <UsersPage currentUserId={user.id} />;
+        break;
+      case 'admin-roles':
+        page = <RolesPage />;
+        break;
+      case 'admin-repositories':
+        page = <RepositoriesPage onRepositoriesChanged={() => void loadRepositories()} />;
+        break;
+      case 'admin-connectors':
+        page = <StoragePage />;
+        break;
+      case 'admin-audit':
+        page = <AuditPage />;
+        break;
+      default:
+        page = <DashboardPage user={user} repositories={repositories} tasks={tasks} />;
+    }
+    content = (
+      <Shell
+        user={user}
+        route={route}
+        locale={locale}
+        onLocaleChange={setLocale}
+        onLogout={() => void logout()}
+        taskCount={tasks?.length ?? 0}
+        unreadMessages={unreadConversations}
+      >
+        {page}
+      </Shell>
+    );
+  }
+
+  return <I18nContext.Provider value={i18n}>{content}</I18nContext.Provider>;
 }

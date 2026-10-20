@@ -15,6 +15,7 @@ const ADMIN_PERMISSIONS = [
   'search.query',
   'jobs.manage',
   'connectors.manage',
+  'messages.audit',
 ] as const;
 
 async function readPassword(prompt: string): Promise<string> {

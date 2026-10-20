@@ -11,13 +11,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { loginBodySchema } from '@intandms/contracts';
+import { changePasswordBodySchema, loginBodySchema } from '@intandms/contracts';
+import { isScopablePermission } from '@intandms/core';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AppEnv } from '../../config/env.schema';
 import { CsrfGuard } from '../../common/csrf.guard';
 import { CsrfService } from '../../common/csrf.service';
+import { parseBody } from '../../common/parse-body';
+import { AuthorizationService } from '../authorization/authorization.service';
 import { AuthService } from './auth.service';
-import { AuthenticatedRequest, SessionAuthGuard } from './session-auth.guard';
+import { AllowPendingPasswordChange, AuthenticatedRequest, SessionAuthGuard } from './session-auth.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -26,6 +29,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService<AppEnv, true>,
     private readonly csrf: CsrfService,
+    private readonly authz: AuthorizationService,
   ) {}
 
   @Get('csrf')
@@ -95,16 +99,32 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(SessionAuthGuard)
+  @AllowPendingPasswordChange()
   @ApiOperation({ summary: 'Current authenticated user' })
-  me(@Req() request: AuthenticatedRequest): {
+  async me(@Req() request: AuthenticatedRequest): Promise<{
     id: string;
     login: string;
     displayName: string;
     permissions: string[];
-  } {
+    scopedPermissions: string[];
+    mustChangePassword: boolean;
+  }> {
     if (!request.user) {
       throw new Error('Authenticated user missing.');
     }
-    return request.user;
+    const grants = await this.authz.grants(request.user);
+    const scopedPermissions = [...new Set(grants.flatMap((grant) => grant.permissions).filter(isScopablePermission))].sort();
+    return { ...request.user, scopedPermissions };
+  }
+
+  @Post('change-password')
+  @UseGuards(SessionAuthGuard, CsrfGuard)
+  @AllowPendingPasswordChange()
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Change own password; revokes other sessions' })
+  async changePassword(@Req() request: AuthenticatedRequest, @Body() body: unknown): Promise<void> {
+    const input = parseBody(changePasswordBodySchema, body);
+    const cookieName = this.config.get('SESSION_COOKIE_NAME', { infer: true });
+    await this.authService.changePassword(request.user!.id, request.cookies?.[cookieName], input);
   }
 }

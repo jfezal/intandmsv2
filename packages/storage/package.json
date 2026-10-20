@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run src/path-guard.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@intandms/core": "*"

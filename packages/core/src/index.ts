@@ -1,2 +1,17 @@
-export { PERMISSIONS, type PermissionKey } from './permissions';
+export {
+  ALL_PERMISSION_KEYS,
+  PERMISSION_CATALOG,
+  PERMISSIONS,
+  isScopablePermission,
+  type PermissionKey,
+  type PermissionScope,
+} from './permissions';
+export {
+  hasEffectivePermission,
+  resolveEffectiveAccess,
+  type AccessGrant,
+  type AccessSource,
+  type EffectiveAccess,
+} from './access';
 export { REPOSITORY_CAPABILITIES, type RepositoryType } from './repository-capabilities';
+export { canEditMessage, directConversationKey, isActiveMember, type ConversationMembership } from './messaging';

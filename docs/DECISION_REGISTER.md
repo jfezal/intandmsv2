@@ -113,6 +113,13 @@ One million documents is a required measured design target; priority preview for
 - OPEN: workload format/page/byte proportions, concurrent users/query rate, freshness/OCR throughput/query latency targets and minimum hardware/device support criteria.
 - Owner/gate: Product Owner/QA/operations, before performance qualification, not before basic implementation. No achieved speed/scale claim.
 
+## D-16 — Internal messaging
+
+- CONFIRMED (Product Owner, 2026-10-20): direct 1-to-1 conversations, groups and per-document discussion threads; every active user may message any active user; attachments are document links only, opened under the recipient's own D-03 permissions; messages are official records that cannot be deleted and authorised auditors may read them for investigations.
+- PROPOSED/IMPLEMENTED: edits allowed for 15 minutes by the sender with every prior text kept as a revision; database triggers refuse message deletion and revision changes; group owner adds/removes, members may leave (owner leaving hands over to the earliest member); document threads readable only while the viewer can read the document; investigation requires `messages.audit`, a stated reason and writes an audit event per list/read; real-time delivery by Server-Sent Events carrying ids only, fanned out through Valkey (in-memory fallback); 4,000-character limit, 50-member groups, 5 links per message, 30 messages/minute per user.
+- OPEN: whether `system.admin` should keep implicit `messages.audit` (today the admin superuser implies every permission — separation of duties); message retention period and legal-hold interaction with D-07; read receipts visibility; notification outside the app (email is not available offline).
+- Owner/gate: Product Owner/security, before production pilot. No message purge path exists.
+
 ## Approval record
 
 - Master prompt confirms product/core architecture and authorizes documentation finalization only.

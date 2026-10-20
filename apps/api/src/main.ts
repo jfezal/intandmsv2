@@ -8,6 +8,11 @@ import { AppModule } from './app.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 import { loadEnv } from './config/env.schema';
 
+// Prisma returns BigInt for size columns; JSON has no BigInt type.
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function toJSON(this: bigint) {
+  return this.toString();
+};
+
 async function bootstrap(): Promise<void> {
   const env = loadEnv(process.env);
 

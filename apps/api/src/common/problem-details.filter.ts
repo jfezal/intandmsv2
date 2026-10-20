@@ -14,6 +14,7 @@ type ProblemDetails = {
   detail?: string;
   instance?: string;
   requestId?: string;
+  code?: string;
 };
 
 @Catch()
@@ -31,6 +32,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let title = 'Internal Server Error';
     let detail: string | undefined;
+    let code: string | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -40,6 +42,9 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         title = response;
       } else if (typeof response === 'object' && response !== null) {
         const body = response as Record<string, unknown>;
+        if (typeof body.code === 'string') {
+          code = body.code;
+        }
         if (typeof body.message === 'string') {
           detail = body.message;
           title = body.message;
@@ -59,6 +64,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       detail,
       instance: request.url,
       requestId,
+      code,
     };
 
     void reply.status(status).send(problem);

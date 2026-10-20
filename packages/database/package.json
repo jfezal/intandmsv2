@@ -10,7 +10,8 @@
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts"
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
+    "reset:admin-password": "tsx scripts/reset-admin-password.ts"
   },
   "dependencies": {
     "@intandms/identity": "*",

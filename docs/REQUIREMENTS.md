@@ -108,6 +108,10 @@ CONFIRMED: polished file-management experience, BM/English, coherent tokens/comp
 
 CONFIRMED: favorites/recent/relationships/saved views/searches/history where permitted, My Tasks and useful role-scoped dashboard/notifications. PROPOSED: per-user memberships/history with live authorization and bounded/privacy-controlled retention, persistent local in-app notifications. Search/user-history retention and delivery policy OPEN.
 
+### FR-21 — Internal messaging
+
+CONFIRMED ([D-16](DECISION_REGISTER.md)): direct, group and document-discussion conversations between active users; document links only, each resolved under the viewer's own permissions (no name disclosed when unreadable); messages are non-deletable official records with edit history; auditors with `messages.audit` read conversations only after giving a reason, and each access is audited. PROPOSED: real-time SSE delivery, unread counts, 15-minute edit window and the limits in D-16. Retention period, admin/auditor separation and out-of-app notification OPEN.
+
 ## Nonfunctional requirements
 
 Confirmed constraints below are explicitly labeled; quantitative acceptance targets remain open.

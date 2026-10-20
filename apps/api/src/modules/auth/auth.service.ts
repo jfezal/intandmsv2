@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
@@ -8,6 +9,7 @@ import type { LoginBody } from '@intandms/contracts';
 import {
   createSessionToken,
   digestSessionToken,
+  hashPassword,
   sessionExpiry,
   verifyPassword,
 } from '@intandms/identity';
@@ -20,6 +22,19 @@ type AuthUser = {
   login: string;
   displayName: string;
   permissions: string[];
+  mustChangePassword: boolean;
+};
+
+export type AuthUserRow = {
+  id: string;
+  login: string;
+  displayName: string;
+  passwordCredential?: { mustResetPassword: boolean } | null;
+  userRoles: Array<{
+    role: {
+      rolePermissions: Array<{ permission: { key: string } }>;
+    };
+  }>;
 };
 
 @Injectable()
@@ -130,7 +145,23 @@ export class AuthService {
     });
   }
 
-  async resolveUserFromToken(token: string | undefined): Promise<AuthUser | null> {
+  /** Builds the principal of an enabled user, e.g. to re-check a stream subscriber's access. */
+  async principalForUser(userId: string): Promise<AuthUser | null> {
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      include: {
+        passwordCredential: { select: { mustResetPassword: true } },
+        userRoles: { include: { role: { include: { rolePermissions: { include: { permission: true } } } } } },
+      },
+    });
+    return user?.enabled ? this.toAuthUser(user) : null;
+  }
+
+  /**
+   * `touch: false` validates without recording activity, so an open event stream does not keep
+   * an otherwise idle session looking active.
+   */
+  async resolveUserFromToken(token: string | undefined, options: { touch?: boolean } = {}): Promise<AuthUser | null> {
     if (!token) {
       return null;
     }
@@ -140,6 +171,7 @@ export class AuthService {
       include: {
         user: {
           include: {
+            passwordCredential: { select: { mustResetPassword: true } },
             userRoles: {
               include: {
                 role: {
@@ -165,10 +197,12 @@ export class AuthService {
       return null;
     }
 
-    await this.prisma.client.session.update({
-      where: { id: session.id },
-      data: { lastActivityAt: new Date() },
-    });
+    if (options.touch !== false) {
+      await this.prisma.client.session.update({
+        where: { id: session.id },
+        data: { lastActivityAt: new Date() },
+      });
+    }
 
     return this.toAuthUser(user);
   }
@@ -186,16 +220,47 @@ export class AuthService {
     }
   }
 
-  private toAuthUser(user: {
-    id: string;
-    login: string;
-    displayName: string;
-    userRoles: Array<{
-      role: {
-        rolePermissions: Array<{ permission: { key: string } }>;
-      };
-    }>;
-  }): AuthUser {
+  /** Verifies the current password, stores the new one and revokes every other session. */
+  async changePassword(
+    userId: string,
+    currentToken: string | undefined,
+    input: { currentPassword: string; newPassword: string },
+  ): Promise<void> {
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      include: { passwordCredential: true },
+    });
+    const credential = user?.passwordCredential;
+    if (!user || !credential || !(await verifyPassword(input.currentPassword, credential.passwordHash))) {
+      throw new BadRequestException('Current password is incorrect.');
+    }
+    if (input.currentPassword === input.newPassword) {
+      throw new BadRequestException('The new password must differ from the current password.');
+    }
+    const passwordHash = await hashPassword(input.newPassword);
+    const nextRevision = user.securityRevision + 1;
+    const currentDigest = currentToken ? digestSessionToken(currentToken) : null;
+
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.passwordCredential.update({
+        where: { userId },
+        data: { passwordHash, passwordChangedAt: new Date(), mustResetPassword: false },
+      });
+      await tx.user.update({ where: { id: userId }, data: { securityRevision: nextRevision } });
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null, ...(currentDigest ? { tokenDigest: { not: currentDigest } } : {}) },
+        data: { revokedAt: new Date() },
+      });
+      if (currentDigest) {
+        await tx.session.updateMany({ where: { tokenDigest: currentDigest }, data: { securityRevision: nextRevision } });
+      }
+      await tx.auditEvent.create({
+        data: { actorUserId: userId, action: 'user.password_change', targetType: 'user', targetId: userId, outcome: 'success' },
+      });
+    });
+  }
+
+  private toAuthUser(user: AuthUserRow): AuthUser {
     const permissions = new Set<string>();
     for (const userRole of user.userRoles) {
       for (const rolePermission of userRole.role.rolePermissions) {
@@ -207,6 +272,7 @@ export class AuthService {
       login: user.login,
       displayName: user.displayName,
       permissions: [...permissions].sort(),
+      mustChangePassword: user.passwordCredential?.mustResetPassword ?? false,
     };
   }
 

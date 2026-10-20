@@ -1,6 +1,12 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import {
+  connectorCredentialsBodySchema,
+  createConnectorBodySchema,
+  updateConnectorBodySchema,
+} from '@intandms/contracts';
 import { CsrfGuard } from '../../common/csrf.guard';
+import { parseBody } from '../../common/parse-body';
 import { AuthenticatedRequest, SessionAuthGuard } from '../auth/session-auth.guard';
 import { ConnectorsService } from './connectors.service';
 
@@ -15,43 +21,60 @@ export class ConnectorsController {
     return this.connectors.list(request.user!);
   }
 
+  @Post()
+  create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.connectors.create(request.user!, parseBody(createConnectorBodySchema, body));
+  }
+
+  @Patch(':connectorId')
+  update(
+    @Req() request: AuthenticatedRequest,
+    @Param('connectorId', ParseUUIDPipe) connectorId: string,
+    @Body() body: unknown,
+  ) {
+    return this.connectors.update(request.user!, connectorId, parseBody(updateConnectorBodySchema, body));
+  }
+
+  @Delete(':connectorId')
+  @HttpCode(204)
+  async remove(@Req() request: AuthenticatedRequest, @Param('connectorId', ParseUUIDPipe) connectorId: string) {
+    await this.connectors.remove(request.user!, connectorId);
+  }
+
+  @Get(':connectorId/browse')
+  browse(
+    @Req() request: AuthenticatedRequest,
+    @Param('connectorId', ParseUUIDPipe) connectorId: string,
+    @Query('path') relativePath?: string,
+  ) {
+    return this.connectors.browse(request.user!, connectorId, relativePath ?? '');
+  }
+
   @Post(':connectorId/health-check')
-  health(@Req() request: AuthenticatedRequest, @Param('connectorId') connectorId: string) {
+  @HttpCode(200)
+  health(@Req() request: AuthenticatedRequest, @Param('connectorId', ParseUUIDPipe) connectorId: string) {
     return this.connectors.healthCheck(request.user!, connectorId);
   }
 
   @Post(':connectorId/connect-test')
-  connectTest(@Req() request: AuthenticatedRequest, @Param('connectorId') connectorId: string) {
+  @HttpCode(200)
+  connectTest(@Req() request: AuthenticatedRequest, @Param('connectorId', ParseUUIDPipe) connectorId: string) {
     return this.connectors.connectTest(request.user!, connectorId);
   }
 
   @Post(':connectorId/credentials')
+  @HttpCode(200)
   credentials(
     @Req() request: AuthenticatedRequest,
-    @Param('connectorId') connectorId: string,
-    @Body() body: { username: string; password: string },
+    @Param('connectorId', ParseUUIDPipe) connectorId: string,
+    @Body() body: unknown,
   ) {
-    return this.connectors.setCredentials(request.user!, connectorId, body);
+    return this.connectors.setCredentials(request.user!, connectorId, parseBody(connectorCredentialsBodySchema, body));
   }
 
   @Post(':connectorId/mount')
-  mount(@Req() request: AuthenticatedRequest, @Param('connectorId') connectorId: string) {
+  @HttpCode(200)
+  mount(@Req() request: AuthenticatedRequest, @Param('connectorId', ParseUUIDPipe) connectorId: string) {
     return this.connectors.applyMount(request.user!, connectorId);
-  }
-
-  @Post()
-  create(
-    @Req() request: AuthenticatedRequest,
-    @Body()
-    body: {
-      name: string;
-      protocol: 'smb' | 'nfs' | 'local';
-      host: string;
-      exportPath: string;
-      mountPath?: string;
-      smbUsername?: string;
-    },
-  ) {
-    return this.connectors.create(request.user!, body);
   }
 }
