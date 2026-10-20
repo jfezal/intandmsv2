@@ -1,0 +1,85 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.shell {
+  max-width: 480px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.shell.wide {
+  max-width: 960px;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.upload input[type='file'] {
+  margin-top: 0.5rem;
+}
+
+header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.panel {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #111827;
+}
+
+.notice code {
+  display: block;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #0b1220;
+  border-radius: 8px;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+input {
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid #475569;
+  background: #0b1220;
+  color: inherit;
+}
+
+button {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
+.error {
+  color: #fca5a5;
+}

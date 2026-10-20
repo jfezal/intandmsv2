@@ -1,0 +1,86 @@
+# Runnable stack for intranet deployment (development/staging profile).
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: intandms
+      POSTGRES_PASSWORD: intandms_dev_only
+      POSTGRES_DB: intandms
+    volumes:
+      - intandms-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U intandms -d intandms']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://intandms:intandms_dev_only@postgres:5432/intandms
+      VALKEY_URL: redis://valkey:6379
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      API_PUBLIC_URL: http://127.0.0.1:8088
+      WEB_ORIGIN: http://127.0.0.1:8088
+      SESSION_SIGNING_SECRET: change-me-use-openssl-rand-base64-32
+      MANAGED_STORAGE_ROOT: /var/lib/intandms/managed
+    volumes:
+      - intandms-managed:/var/lib/intandms/managed
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://intandms:intandms_dev_only@postgres:5432/intandms
+      VALKEY_URL: redis://valkey:6379
+      MANAGED_STORAGE_ROOT: /var/lib/intandms/managed
+    volumes:
+      - intandms-managed:/var/lib/intandms/managed
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '8088:80'
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+
+volumes:
+  intandms-pgdata:
+  intandms-managed:

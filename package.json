@@ -1,0 +1,26 @@
+{
+  "name": "intandmsv2",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present",
+    "lint": "npm run lint -ws --if-present",
+    "dev:api": "npm run dev -w @intandms/api",
+    "dev:web": "npm run dev -w @intandms/web",
+    "dev:worker": "npm run dev -w @intandms/worker",
+    "dev": "npm run dev:api",
+    "db:generate": "npm run generate -w @intandms/database",
+    "db:migrate": "npm run migrate:dev -w @intandms/database",
+    "db:migrate:deploy": "npm run migrate:deploy -w @intandms/database",
+    "bootstrap:admin": "npm run bootstrap:admin -w @intandms/database",
+    "compose:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d",
+    "compose:down": "docker compose -f infra/compose/docker-compose.dev.yml down"
+  }
+}

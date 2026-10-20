@@ -6,9 +6,9 @@
 
 ## On-premise engineering constraints
 
-Confirmed: customer-owned Ubuntu/Linux servers/VMs, offline Docker Compose installation, local users/password security/sessions, local filesystem and NAS/SMB/NFS, PostgreSQL FTS default, local Tesseract/previews/workers, and no outbound telemetry. LDAP/AD, OIDC, S3, and OpenSearch are optional; Keycloak/cloud/Internet are not prerequisites. Every implementation/release must preserve the disconnected baseline.
+Confirmed: dedicated customer Ubuntu/Linux app server, NAS-primary Managed and in-place read-only Indexed repositories, React/NestJS/TypeScript/PostgreSQL/FTS/Tesseract/Compose, local authentication, BM/English, offline/local-only operation. LDAP/AD optional; previously discussed OIDC/S3/OpenSearch remain deferred, not baseline requirements. Every release preserves the disconnected baseline without forced original-file migration.
 
-Bundle frontend/native/runtime assets; no CDN/public ACME/activation dependencies. Maintain customer-local health, capacity, offline scan-signature update, backup/restore, and administration runbooks. External-reference sources must never be modified; preserve history using approved immutable snapshots.
+Bundle frontend/native/runtime assets; no CDN/public ACME/activation. Maintain local health/capacity/verified offline updates/backup runbooks. Indexed sources never modified; observations are incomplete external history, retained snapshots optional. Managed versions stay on NAS with approved immutable layout. Stream/paginate/checkpoint at 1,000,000-document target; never claim scale without benchmarks.
 
 ## 1. Repository structure recommendation
 
@@ -118,7 +118,7 @@ Dependency direction: API/worker composition -> application/domain and adapters;
 - Use restrictive CSP, secure cookies, CSRF validation, explicit CORS policy, and safe output encoding.
 - Disable unsafe inline serving of active formats and avoid raw HTML rendering unless there is a reviewed sanitization boundary.
 - Do not expand ZIP/archive ingestion or external-network access without an approved threat model.
-- Retention/managed-content deletion needs policy review, dry-run, hold checks, and explicit authorization. Reference-source modification/deletion is prohibited, not an approvable routine connector operation.
+- Retention/Managed physical purge needs policy review/dry-run/holds/authorization. Indexed source modification/deletion is prohibited, not an approvable connector cleanup action.
 - Sanitize untrusted strings in logs and audit display to prevent injection; avoid logging content merely to aid debugging.
 
 ## 5. Persistence, migrations, and concurrency
@@ -145,7 +145,7 @@ Dependency direction: API/worker composition -> application/domain and adapters;
 - Client-side permission checks are display hints; server checks remain mandatory.
 - Use accessible semantics, keyboard paths, focus management, labels, contrast, and testable error feedback.
 - Use backend pagination/filtering for large datasets and scoped query caches; clear sensitive caches on logout/access changes.
-- Document localization/date/time behavior instead of silently assuming a language or timezone.
+- BM/English translation keys are required; document timezone behavior. Follow UI_UX_SPECIFICATION.md and DESIGN_SYSTEM.md, not a generic CRUD page template.
 
 ## 7. Testing strategy
 
@@ -159,7 +159,7 @@ Exercise real PostgreSQL/FTS, local queue, filesystem, and approved NAS/SMB/NFS 
 
 ### End-to-end tests
 
-Cover local bootstrap/login/logout/recovery/lockout/session revocation, uploads/quarantine/scans, folder policies/moves, version restore, default FTS, previews/downloads, workflow, and retention dry-run/holds. Repeat baseline install/reboot/core journeys with Internet blocked, no optional services, bundled assets, and synthetic data. Offline server operation is not permission to bypass authentication/TLS.
+Cover local authentication, type-specific repository/operation policies, Indexed observations/freshness/reconciliation, Managed version restore, physical versus virtual organization, default FTS/BM-English, each priority preview, workflow and retention/holds. Repeat baseline install/reboot with Internet blocked and synthetic data. TESTING_STRATEGY.md owns detailed acceptance; no optional service can become prerequisite.
 
 ### Security tests
 
@@ -192,7 +192,7 @@ Coverage thresholds are proposed after the foundation baseline; no arbitrary glo
 
 - Keep setup, configuration, endpoints, test commands, module boundaries, and operational notes current with code.
 - Record significant decisions in `docs/adr/NNNN-title.md`: context, status, options, decision, consequences, security impact, and approval/date.
-- Trace work to FR/NFR and D identifiers; explicitly record changed business assumptions.
+- Trace work to FR/NFR and D identifiers; DECISION_REGISTER.md is the only unresolved decision register. Explicitly record changed assumptions/ADRs.
 - Document runbooks for queue replay, index rebuild, connector repair, quarantined files, backup restore, incident response, and approved disposition.
 - Do not claim a command, integration, security control, or restore is verified without recorded execution evidence.
 

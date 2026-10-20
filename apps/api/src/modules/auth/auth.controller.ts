@@ -1,0 +1,93 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { loginBodySchema } from '@intandms/contracts';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { AppEnv } from '../../config/env.schema';
+import { AuthService } from './auth.service';
+import { AuthenticatedRequest, SessionAuthGuard } from './session-auth.guard';
+
+@ApiTags('auth')
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService<AppEnv, true>,
+  ) {}
+
+  @Get('bootstrap-status')
+  @ApiOperation({ summary: 'Whether first administrator bootstrap is still allowed' })
+  async bootstrapStatus(): Promise<{ bootstrapOpen: boolean }> {
+    return { bootstrapOpen: await this.authService.isBootstrapOpen() };
+  }
+
+  @Post('login')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Local username/password login' })
+  async login(
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<{ user: { id: string; login: string; displayName: string; permissions: string[] } }> {
+    const parsed = loginBodySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid login payload.');
+    }
+
+    const ip =
+      typeof request.ip === 'string'
+        ? request.ip
+        : typeof request.headers['x-forwarded-for'] === 'string'
+          ? request.headers['x-forwarded-for']
+          : undefined;
+
+    const result = await this.authService.login(parsed.data, ip);
+    const cookieName = this.config.get('SESSION_COOKIE_NAME', { infer: true });
+    const secure = this.config.get('NODE_ENV', { infer: true }) === 'production';
+
+    void reply.setCookie(cookieName, result.token, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: this.config.get('SESSION_ABSOLUTE_SECONDS', { infer: true }),
+    });
+
+    return { user: result.user };
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Revoke current session' })
+  async logout(@Req() request: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply): Promise<void> {
+    const cookieName = this.config.get('SESSION_COOKIE_NAME', { infer: true });
+    const token = request.cookies?.[cookieName];
+    await this.authService.logout(token);
+    void reply.clearCookie(cookieName, { path: '/' });
+  }
+
+  @Get('me')
+  @UseGuards(SessionAuthGuard)
+  @ApiOperation({ summary: 'Current authenticated user' })
+  me(@Req() request: AuthenticatedRequest): {
+    id: string;
+    login: string;
+    displayName: string;
+    permissions: string[];
+  } {
+    if (!request.user) {
+      throw new Error('Authenticated user missing.');
+    }
+    return request.user;
+  }
+}

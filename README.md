@@ -2,7 +2,7 @@
 
 On-premise enterprise Document Management System for **Sisi Awan Technologies Sdn Bhd**, designed for customer-owned Ubuntu/Linux servers or VMs on a private LAN/intranet.
 
-**Status: architecture proposal; awaiting Product Owner approval.** This repository contains planning documents only. No application, deployment, database schema, or dependency installation has been implemented.
+**Status: Phase 1 foundation in progress.** Architecture/spec documents remain authoritative; an initial npm-workspace application baseline (API, web shell, database, worker placeholder) is being implemented per [DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md). See [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md).
 
 ## Repository baseline
 
@@ -45,9 +45,18 @@ See the architecture and stack documents for qualifications. Exact dependency ve
 
 The Product Owner must review the proposal and resolve or explicitly defer the [decision register](docs/REQUIREMENTS.md#decision-register) before feature implementation. Approval to implement does not authorize production changes, deployments, destructive operations, or GitHub pushes.
 
-## Getting started
+## Getting started (local development)
 
-Read the documents above. There are **no runnable application commands yet**: no `package.json`, Docker configuration, or application source exists. Setup and test commands will be documented after the foundation phase is approved and implemented.
+1. Copy environment template: `cp .env.example .env` and adjust secrets.
+2. Start dependencies: `npm run compose:up`
+3. Install and build packages: `npm install && npm run build -w @intandms/identity -w @intandms/contracts -w @intandms/database && npm run db:generate`
+4. Apply migrations: `npm run db:migrate -- --name init` (from repo root; answers prompts on first run)
+5. Create first administrator (host-only): `npm run bootstrap:admin -- admin.login`
+6. Run API: `npm run dev:api` — http://127.0.0.1:3000/api/v1/health , OpenAPI http://127.0.0.1:3000/api/docs
+7. Run web shell: `npm run dev:web` — http://127.0.0.1:5173
+8. Optional worker: `npm run dev:worker`
+
+Read the architecture documents above before changing domain behavior. Phase 2+ features remain spec-only until implemented.
 
 ## Licensing and confidentiality
 

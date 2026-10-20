@@ -2,13 +2,13 @@
 
 **IntanDMS V2 — Sisi Awan Technologies Sdn Bhd**
 
-**Status:** revised on-premise proposal for review; product constraints confirmed, no implementation authorized.
+**Status:** master-aligned specification; core architecture CONFIRMED, details PROPOSED/policies OPEN; no implementation authorized.
 
 **Date:** 2026-10-08
 
 ## 1. Executive recommendation
 
-Build an **on-premise API-first modular monolith with independently deployed local workers** on customer-owned Ubuntu/Linux physical servers or VMs. Keep business state and default full-text search in PostgreSQL; store managed binaries on local filesystem or approved DMS-owned shares. Default to local users, secure password hashing, opaque sessions, and consistent server-side RBAC.
+Build an **on-premise API-first modular monolith with separately executable local workers** on a dedicated customer Ubuntu/Linux server/VM. React/TypeScript and NestJS/TypeScript are confirmed; PostgreSQL owns state/default FTS. Originals remain on customer NAS: dedicated Managed namespace or existing in-place read-only Indexed folders. Local accounts default; no proprietary-store migration or compulsory retained Indexed snapshots.
 
 **Confirmed correction:** IntanDMS V2 is not cloud-first SaaS. It must work fully without Internet, cloud services, external APIs, or third-party identity providers. LDAP/AD, OIDC, S3-compatible storage, and OpenSearch are optional. Keycloak is not required. Docker Compose installation, assets, processing, updates, monitoring, and backups must support disconnected customer environments; telemetry never leaves customer infrastructure.
 
@@ -17,6 +17,8 @@ This balances enterprise controls and maintainability without the premature cost
 The repository was empty when inspected. This proposal is a greenfield baseline, not an assessment of existing application architecture. V1 code reuse, data migration, and business compatibility are not assumed.
 
 Detailed recommendations require D-01 through D-11 review in [Requirements](REQUIREMENTS.md). Confirmed defaults are not reopened as choices. Internal organization boundaries, permission semantics, and local account policy must be resolved before initial migrations. This revision supersedes the initial mandatory OIDC/S3/OpenSearch direction.
+
+The final master also supersedes mandatory snapshots of every Indexed source. Managed versions and Indexed observations/freshness have distinct guarantees. At least 1,000,000 documents is a benchmark target, not an achieved result. Remaining approvals are solely in [Decision register](DECISION_REGISTER.md), including D-12 through D-15. Detailed domain documents own contracts; this document integrates them.
 
 ## 2. Logical topology
 
@@ -30,9 +32,9 @@ Reverse proxy / web assets --------> NestJS/Fastify REST API
                                            |
                   +------------------------+----------------------+
                   |                        |                      |
-             PostgreSQL              Managed filesystem     Read-only sources
-         business state, RBAC,        local / NAS mounts     NAS / SMB / NFS
-         sessions, audit, outbox,     immutable versions     snapshot ingestion
+             PostgreSQL              Managed NAS           Indexed NAS sources
+         business state, RBAC,        physical current tree  existing in-place paths
+         sessions, audit, outbox,     immutable versions     read-only observations
          text chunks / FTS
                   |
              Outbox dispatcher ----> BullMQ / Valkey
@@ -51,6 +53,8 @@ Optional adapters: LDAP/AD, OIDC, S3-compatible storage, OpenSearch
 
 This is a logical dependency map, not a confirmed server sizing/layout. Baseline services run inside customer infrastructure. Optional adapters are disabled by default and absent from baseline startup requirements. No public endpoint, CDN, hosted observability, remote license check, or external processor is needed.
 
+Web storage administration uses a restricted local host connector gateway/preprovisioned mount envelope, separate from API/processor privileges. Indexed transient staging/derived assets live on app disk; retained original snapshots optional. No NAS accessed in this task.
+
 ## 3. Module boundaries
 
 Proposed backend modules:
@@ -59,11 +63,13 @@ Proposed backend modules:
 - **Authorization:** role assignments, scoped grants, policy evaluation, effective access calculation.
 - **Organizations/workspaces:** optional organization/tenant boundary, dependent on D-01.
 - **Repositories and folders:** hierarchy, ownership, moves, lifecycle state.
+- **Repository capabilities:** separate Managed physical/version commands and Indexed observations/read-only source operations; virtual organization never conflates mutation/access.
 - **Documents and versions:** stable document identity, immutable content versions, upload state.
 - **Metadata and classification:** schema versions, typed validation, classification catalog.
 - **Storage and connectors:** storage contracts, credentials references, synchronization state.
 - **Processing:** scan, extraction, OCR, preview task orchestration and provenance.
 - **Search:** index projection, permission-aware query orchestration, reconciliation.
+- **Indexing/reconciliation:** streamed durable frontier/checkpoints, conservative identity evidence, availability, bounded admission/resource controls and truthful million-document statistics.
 - **Workflow:** versioned definitions, tasks, transitions, decisions, authorized participants.
 - **Retention:** evaluation, holds, disposition proposals, approved execution.
 - **Audit:** durable business/security events, authorized queries and evidence export.
@@ -87,6 +93,8 @@ Use PostgreSQL constraints and transactions as the primary integrity mechanism. 
 - `repositories`, `folders` with parent links and repository boundary.
 - `documents` with stable identity, current version pointer, lifecycle state, and concurrency revision.
 - `document_versions` with immutable content reference, sequence, checksum, size, MIME determination, actor, and time.
+- Indexed `source_observations`/path history/current observation pointer, not controlled versions; optional snapshot coverage separate.
+- virtual folders/categories/tags/memberships, relationships/favorites/recent/saved views/searches, separate physical references.
 - `storage_locations`, `storage_objects`, `upload_sessions`, and `connectors` with credential references, not plaintext secrets.
 - `metadata_schemas`, `metadata_schema_versions`, `classifications`, and validated `document_metadata`.
 - `processing_jobs`, `processing_artifacts`, `extraction_results`, and `outbox_events`.
@@ -98,7 +106,7 @@ Use PostgreSQL constraints and transactions as the primary integrity mechanism. 
 - bounded extracted-text chunks and `tsvector` search projections, language/analyzer versions, and projection revision.
 - connector checkpoints/source mappings and index projection watermarks.
 
-One repository has folders/documents; one document has many immutable versions. Each accepted binary version references managed immutable bytes, including snapshots captured from read-only external sources. Source mappings record provenance, not a mutable substitute for historical content. Workflow instances pin definition/document versions. Audit/job history survives ordinary soft deletion.
+Managed documents have immutable NAS versions; Indexed documents have source observations and optional snapshot coverage, not promised old bytes. Workflow pins definition plus Managed version or approved source-state representation. Physical references and logical memberships are separate. Audit/history survives soft deletion. [Database architecture](DATABASE_ARCHITECTURE.md) owns constraints/entities/indexes/target relations.
 
 ### 4.2 Data rules
 
@@ -133,9 +141,9 @@ Backup strategy includes customer-local PostgreSQL backups/WAL where approved RP
 
 ### 5.1 Managed storage
 
-Use **local filesystem storage by default**, with supported NAS/SMB/NFS adapters and optional S3-compatible storage behind a common interface. Managed originals/versions/snapshots/derivatives live under dedicated administrator-approved roots; quarantine and scratch are separate. User filenames are display metadata, never paths. Host operators mount network shares; ordinary application containers have no mount privilege.
+Use **customer NAS for originals**, via Synology/Windows/Samba SMB3 or Linux NFS. App disk holds DB/config/transient staging/scratch/derivatives. Managed roots are dedicated authorized namespaces; Indexed roots stay in place/read-only. S3/local-original extensions are not migration prerequisites. User input never becomes arbitrary host paths. Web mount administration uses a restricted host-approved gateway; API/processors lack mount privilege.
 
-Logical versions refer to immutable stored bytes; filesystem/share snapshots and optional bucket versioning are recovery mechanisms, not the version model. Use staged writes, checked sizes/hashes, exclusive non-overwriting publication, and durability operations appropriate to the provider. Validate same-filesystem rename/fsync and share failure semantics; PostgreSQL and file writes are not atomic together. Encrypt at rest/in transit under customer policy with local key recovery.
+Managed versions refer to immutable NAS bytes with a validated physical working-tree presentation and durable operation ledger; layout/interoperability proposed under D-04. Indexed observations do not guarantee old bytes. Use bounded staging/hashes/non-overwriting publication and provider-specific durability. DB/share writes never share ACID; customer encryption/key recovery/NAS backup remain controls.
 
 Serve content through authorized API streaming, never a public static root or raw share URL. Workers receive narrow inputs, not repository-wide credentials. Presigned URLs exist only for optional S3 and require revocation-window review. See [Storage architecture](STORAGE_ARCHITECTURE.md) for root containment, mount health, ownership, reference snapshots, and capacity accounting.
 
@@ -146,7 +154,7 @@ The database and filesystem/share/optional object store have no shared transacti
 1. Authorize contributor and destination; validate intended size/type against policy; reserve an upload session with expiry and idempotency identity.
 2. Stream to a server-generated exclusive quarantine file with space checks and byte limits even when `Content-Length` is absent/false. Direct S3 upload is optional and not the baseline.
 3. Verify actual size, content signature/MIME, and cryptographic checksum over received bytes. Multipart ETags on optional S3 are not reliably content hashes.
-4. Register a pending immutable version, its storage reference, audit event, and processing outbox entry in one PostgreSQL transaction. It is not yet readable as an accepted document version.
+4. Managed upload registers pending NAS version/operation intent/audit/outbox in PostgreSQL, not yet readable. Indexed ingestion publishes source observation/derived generation from transient bytes, not a mandatory retained original version.
 5. Scan content in an isolated processor. Promote the object/state using idempotent transitions only after required checks pass. Copy/promotion and DB updates are reconcilable, not falsely atomic.
 6. Publish the accepted current-version pointer in a transaction, recording audit and next-stage jobs. Extraction/preview failures must be visible independently of upload acceptance.
 7. Reconcile stale uploads, failed promotions, duplicate requests, and orphan objects. Cleanup cannot delete committed versions; use age grace periods and confirmed references.
@@ -161,7 +169,7 @@ Use a connector boundary separate from interactive API file access:
 - Keep connector credentials in an approved secret store or encrypted secret mechanism with the key outside the database.
 - Use SMB3 with approved encryption/signing settings; disable obsolete/insecure protocol options.
 - Validate NFSv4 identity mapping/export access, root squashing, mount reliability, and approved transport protection. Do not assume NFS on a private LAN is authenticated/encrypted adequately.
-- Run mounts/connector agents under dedicated OS accounts with minimal network and filesystem scope. If mounting requires elevated privileges, perform it outside ordinary API/processing containers under operator control.
+- Restrict mount privilege to authenticated host gateway/operator envelope; web test/root browse/config/health/disable uses this narrow channel. See NAS_CONNECTOR_ARCHITECTURE.md.
 - Enforce path containment, reject traversal, and prevent symlink/TOCTOU escape with OS-level containment and safe path operations; string-prefix checks alone are insufficient.
 - Track source identity, modification markers, size, hashes where available, and scan checkpoints.
 - Compare pre/post-copy source markers; detect source changes during read and retry rather than certify a mixed version.
@@ -171,11 +179,11 @@ Use a connector boundary separate from interactive API file access:
 
 ### 5.4 Connector ownership modes
 
-- **Managed:** DMS owns a dedicated approved local/share/optional S3 namespace. Authorized writes create immutable versions; lifecycle deletion is policy-controlled.
-- **External-reference:** DMS discovers source content read-only, never modifies/renames/deletes it or writes sidecars/locks. Capture a stable read-only source into managed quarantine, scan those exact bytes, and preserve immutable snapshots for accepted historical versions. New source changes create new snapshots/versions; missing/unreachable sources produce audited state, not history deletion.
+- **Managed Repository:** dedicated authorized NAS root, physical upload/rename/move/copy/delete/restore and primary immutable versions. NAS-granted outside edits cannot be prevented by DMS.
+- **Indexed Repository:** existing source in place/read-only, discovery/search/OCR/preview/download and logical metadata/tags/virtual organization. Transient staging is not migration/history; source observations expose incomplete external history. Retained original snapshots optional.
 - **Import:** an explicit read-only ingestion operation into managed storage; source provenance is retained. It is not permission to mutate the source.
 
-Reference mode and versioning are required together; a mutable source path alone cannot guarantee past versions. Snapshot-copy permission/retention must be reviewed under D-04. If copies are forbidden and the source lacks verified immutable history, resolve that conflict before promising historical downloads/approvals. Managed-share writes are limited to declared DMS roots; no mutation of reference roots is permitted. S3 is optional; no bucket is needed for baseline operation.
+Distinct capability/security models: mutable Indexed paths cannot guarantee complete historical versions/audit, and UI must say so. Source-state workflow decisions revalidate observed hash/context; high-assurance evidence uses Managed/explicit snapshot coverage. No source mutation/purge or checksum-only identity merging. [Repository models](REPOSITORY_MODELS.md) owns capability rules.
 
 ## 6. OCR, preview, and search architecture
 
@@ -197,7 +205,7 @@ accepted original -> isolated preview generation -> safe derivative
 
 Each stage has explicit pending/running/succeeded/failed/quarantined state, attempt records, timestamps, and engine/profile version. Failures do not erase originals or silently change previous successful artifacts. Reprocessing writes a new artifact generation and only publishes a completed generation.
 
-Use local native extraction where reliable and **local Tesseract** OCR where needed. Bundle engines, language data, renderers, fonts, and any local scanner signatures; never download them at runtime or fetch document-linked remote resources. Record page coverage, language, failures, and confidence only where meaningful. Validate accuracy on business samples; OCR text is not guaranteed evidence of the original.
+Use local native extraction and **Tesseract BM/English** where needed, reuse by content/profile identity. Bundle `msa`/`eng`, converters/fonts/scanner data; no runtime downloads/document-linked fetch. PDF/JPEG/PNG/TIFF/DOCX/XLSX/PPTX preview priorities require fidelity/limit tests. See SEARCH_OCR_PREVIEW.md.
 
 Apply CPU, memory, wall-clock, byte, archive-expansion, page, pixel, and temporary-disk limits. Disable processor egress by default and give it access only to the required input/output. Treat parser libraries and conversion engines as patch-sensitive attack surfaces. Never interpolate filenames into shell commands.
 
@@ -274,7 +282,7 @@ Use server-managed query state, generated contract types, route-level code split
 
 Provide visible pending/failed job states, upload progress/cancellation, conflict handling, empty/error states, and recovery actions. Permission expiry or revoked access must close sensitive views rather than render cached content indefinitely. Partition/clear client caches by session/organization and clear on logout. Sensitive endpoints should use private/no-store cache policy as appropriate; no offline/service-worker document cache is proposed.
 
-Confirm accessibility, localization, browser versions, user timezone presentation, and responsive/mobile requirements in D-10.
+BM/English, accessible modern light-default file UX, desktop/tablet/mobile essentials and all screen states are confirmed. Explorer/Viewer/Search/Upload/Storage wizard/Indexing dashboard follow UI_UX_SPECIFICATION.md and DESIGN_SYSTEM.md; brand/browser/timezone/quantitative UX details are D-14.
 
 ## 10. Background processing and consistency
 
@@ -301,9 +309,9 @@ Long-running business approval waits live in PostgreSQL workflow state; a worker
 
 ## 11. Workflow and retention
 
-Use explicit state machines and versioned definitions. Workflow decisions record actor, task, target document version, definition version, outcome, comment policy, and timestamp. Concurrency controls prevent double approval. A changed document cannot silently inherit an approval granted to another version.
+Versioned definitions support submit/review/approve/reject/return/reassign/comments/history/due/notifications and approved sequential/parallel rules. Pin Managed version or eligible Indexed observation/hash/metadata context, revalidate decisions and block stale/ambiguous/unavailable state; no new bytes inherit old approval. See DOCUMENT_LIFECYCLE.md.
 
-Retention evaluates approved start events/durations/classifications; missing policy cannot invent an expiry. Proposed legal holds override disposition. Start in report-only mode with dry-run previews and explicit approvals for enabling deletion.
+Retention/start-event/expiry/review/legal-administrative holds/reporting confirmed; durations/authority need policy. Start report-only; holds block Managed purge. Indexed disposition never deletes source and cannot prevent independent source-owner edits; logical versus physical removal explicit.
 
 Purge is a multi-stage audited process: recheck holds and permissions, lock/mark eligible records, remove live originals and derivatives through controlled adapters, invalidate indexes/caches, verify completion, and retain the minimum approved tombstone/evidence. Storage retention locks may legitimately block deletion and must be reported, not bypassed.
 
@@ -326,7 +334,7 @@ Logs must not contain document text, cookies, tokens, passwords, connection stri
 
 ### 12.2 Audit integrity
 
-Business audit is distinct from operational telemetry. Successful sensitive changes must atomically record an audit event or fail; define read/download/denial audit handling and failure behavior in D-09. Unavailability of an asynchronous log sink must not silently remove required evidence.
+All master audit categories, including view/preview/download, are required. DB mutations atomically record audit/ledger/outbox; NAS outcomes reconciled durably. Access intent precedes sensitive content response, then transfer completion/failure records outcome; failed required audit cannot permit access silently. Direct NAS events remain incomplete/unknown actors. SECURITY_ARCHITECTURE.md owns audit protocol; D-09 sets retention/privacy/assurance.
 
 Use append-only application behavior and dedicated audit write/read privileges. The ordinary runtime must not update/delete prior audit records; an approved maintenance/retention process uses separately controlled credentials. Database administrators can still alter data: append-only tables alone are not tamper-proof.
 
@@ -366,7 +374,7 @@ A single server/VM is a single failure domain, not HA. RAID or VM snapshots do n
 
 ### 13.3 Backup and restore
 
-Cover PostgreSQL data/WAL including local account hashes/authorization/audit, managed originals/reference snapshots, required configuration, connector state, and customer-held encryption/signing keys through separately controlled procedures. Optional self-hosted integrations require their own backup policies. Derivatives/FTS may be rebuilt from retained originals/provenance. Reference source backups belong to the source owner; managed snapshots are part of DMS backup.
+Cover PostgreSQL/account/RBAC/audit/workflow/hold/job state, Managed NAS working tree/immutable versions, config/connection/key custody, optional Indexed snapshots and declared derivative coverage. Existing Indexed original backup belongs to source owner; re-extraction may be impossible if old source bytes are gone. DB/NAS recovery alignment and procedures are in runbooks/BACKUP_RECOVERY.md.
 
 Encrypt backups, restrict identities, and keep copies on a separate customer-controlled failure domain/media. Quiesce mutation/purge and align DB recovery points with immutable file manifests/snapshots, or implement a tested online consistency protocol. Restore in isolation with connectors/schedules paused; validate version hashes, permissions, account recovery, holds/tombstones, mount identity, and rebuild state before traffic resumes. Revoke restored sessions/service secrets as appropriate. No cloud backup is mandatory.
 
@@ -380,17 +388,17 @@ Use alert thresholds agreed against baselines, named owners, and runbooks. Perfo
 
 ## 14. Architecture decision summary
 
-Proposed decisions for review:
+CONFIRMED decisions and PROPOSED mechanisms for review (recorded in docs/adr/):
 
 1. Modular TypeScript monolith plus separate workers, not business microservices.
 2. PostgreSQL as authoritative business/security state; Prisma subject to SQL needs and compatibility.
-3. Local managed filesystem plus NAS/SMB/NFS support; read-only external references with immutable version snapshots; S3 optional.
+3. NAS-primary Managed controlled versions/physical operations; in-place read-only Indexed observations, no migration/mandatory snapshots; restricted web connector boundary.
 4. Local password authentication and server-side sessions; LDAP/AD/OIDC optional, Keycloak not required; DMS-enforced RBAC.
-5. Immutable document versions; reliable outbox and idempotent processing.
+5. Managed immutable versions versus incomplete Indexed source observations; proposed reliable outbox/ledger/idempotent generation processing.
 6. Local sandboxed OCR/extraction/previews; no cloud content processing by default.
 7. PostgreSQL FTS default behind SearchPort; customer-local OpenSearch optional.
-8. React/Vite SPA and reviewed OpenAPI integration contract.
+8. React/TypeScript confirmed, proposed Vite SPA/OpenAPI client; BM/English professional file UX and physical/virtual distinction.
 9. Docker Compose on customer-owned physical/virtual Ubuntu servers, offline install/update, local TLS/monitoring, capacity and tested customer-controlled backup/restore.
-10. No mandatory cloud/Internet/external IdP/API, and no telemetry outside customer infrastructure; organization boundaries, detailed policies, workflow, retention, and capacity targets remain open.
+10. No cloud/Internet/IdP/API/telemetry dependency; 1,000,000-document target benchmarked before claims. Detailed policy/qualification approvals centralized in DECISION_REGISTER.md.
 
-After approval, capture decisions in `docs/adr/` before implementing consequences. This proposal is not a substitute for a threat model, approved schema, benchmark, or production readiness review.
+ADRs now record confirmed master choices and proposed gateway/consistency details. ARCHITECTURE_VALIDATION.md records integrated review/risks; no code/schema/benchmark/deployment certification is implied.

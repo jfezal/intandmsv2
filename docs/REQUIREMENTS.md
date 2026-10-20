@@ -1,6 +1,6 @@
 # Requirements and decision register
 
-**Status:** revised proposal for review, 2026-10-08. On-premise constraints are confirmed; detailed business rules and implementation remain subject to approval.
+**Status:** master-aligned specification, 2026-10-08. CONFIRMED product scope; PROPOSED implementation/acceptance detail; OPEN business/qualification policies. No application implementation authorized.
 
 ## Status vocabulary
 
@@ -8,20 +8,21 @@
 - **Proposed:** architectural recommendation or candidate acceptance criterion; approval required.
 - **Open:** missing requirement or choice; must be resolved or explicitly deferred.
 
-All sixteen functional capabilities below are confirmed at capability level. Their behavior and acceptance criteria are proposed unless separately approved. Decision IDs are shared across the documentation.
+FR-01 through FR-16 retain historical capability IDs; FR-17 onward capture explicit master additions. Core behavior from the master is CONFIRMED. Recommendations/unspecified policy values are PROPOSED/OPEN. [Decision register](DECISION_REGISTER.md) is the sole register; examples do not invent business rules.
 
 ## Confirmed architecture correction
 
-The Product Owner's correction supersedes the earlier OIDC/S3/OpenSearch-first proposal:
+The final master supersedes earlier storage/snapshot defaults while retaining approved on-premise technology:
 
 - Customer-owned physical/virtual Ubuntu/Linux servers; private LAN/intranet access; not cloud-first SaaS.
 - Fully functional without Internet, mandatory cloud services, or a third-party IdP.
 - Local authentication by default, secure password hashing, sessions, account lockout/rate limiting, RBAC, and audit; LDAP/AD and OIDC optional; Keycloak not required.
-- Local filesystem, NAS/SMB, NFS support; S3 optional. Managed and external-reference modes are required; reference mode must not modify source files.
+- NAS-primary Managed Repository in a dedicated authorized namespace and Indexed Repository on existing unchanged paths/read-only, no mandatory migration or retained source snapshots. Synology/Windows/Samba SMB3 and Linux NFS, web-configured connections.
 - PostgreSQL Full-Text Search is the default with a search abstraction; OpenSearch optional.
-- Local Tesseract OCR, local previews/workers, and no mandatory external API calls.
+- React/NestJS/TypeScript/PostgreSQL, modular monolith/separate local workers, local Tesseract BM/English and local previews; no external document API.
 - Docker Compose offline installation, backup/restore, capacity planning, health monitoring, and system administration.
 - No telemetry outside customer infrastructure; server-side authorization, path/share protection, isolated processing, and comprehensive audit logs.
+- 1,000,000-document benchmark target; BM/English polished accessible explorer/viewer/admin UX. Priority previews: PDF/JPEG/PNG/TIFF/DOCX/XLSX/PPTX.
 
 These requirements are **confirmed**, not optional candidates. Exact versions, policy values, sizing, and business semantics remain open.
 
@@ -29,35 +30,35 @@ These requirements are **confirmed**, not optional candidates. Exact versions, p
 
 ### FR-01 — Document repositories
 
-Confirmed: repository management. Proposed: create, update, archive, and list authorized repositories; track ownership and lifecycle status. Archiving must not silently delete content. Repository names, quotas, and administrative scope are open.
+CONFIRMED: multiple clearly separated Managed/Indexed repositories, name/description/type/connection/root/status/permissions/indexing/processing/retention/health. PROPOSED: revision-checked create/update/disable/archive; no silent content deletion/type conversion. Acceptance: type capability-negative tests/UI labels and safe connection disable. See REPOSITORY_MODELS.md.
 
 ### FR-02 — Files and folders
 
-Confirmed: file/folder management. Proposed: upload, organize, move, rename, list, download, and controlled soft deletion. Reject cycles, invalid paths, unauthorized destination moves, and concurrency conflicts. Conflict rules, maximum hierarchy depth, size limits, and recycle-bin behavior are open.
+CONFIRMED: browse/navigate/upload/download/rename/move/copy/delete where permitted/restore where supported, bulk actions, details/metadata/classification/tags/favorites/recent/relationships/history, all capability/policy-gated. Indexed physical writes/restores are unsupported; logical changes stay in DB. PROPOSED: bounded asynchronous bulk manifests, soft-delete/trash for Managed, ledger recovery and expected revisions. Collision/trash/size policies OPEN; no fake resumable transfer.
 
 ### FR-03 — External storage
 
-Confirmed: local filesystem, NAS/SMB, NFS, optional S3-compatible storage; managed and external-reference modes. External-reference mode must never modify source files, including rename, delete, metadata writeback, lock files, or sidecars. Proposed: approved roots/endpoints, least-privilege credentials, host-managed mounts, health checks, incremental discovery, and reconciliation. Managed roots must be explicitly DMS-owned. Historical reference versions use immutable managed snapshots with provenance; snapshot retention/storage permission must be agreed. See [Storage architecture](STORAGE_ARCHITECTURE.md).
+CONFIRMED: SMB3 Synology/Windows/Samba and Linux NFS, UI add/test/validate/browse/select/health/failures/update/disable; credentials server-side, path/symlink/root/write protection, explicit mount identity/no local fallback. Indexed sources never altered; no compulsory original snapshots. PROPOSED: restricted host gateway and preprovisioned mode, transient staged verification, provider-specific guarantees. See [Storage](STORAGE_ARCHITECTURE.md) and [connectors](NAS_CONNECTOR_ARCHITECTURE.md).
 
 ### FR-04 — Metadata and classification
 
-Confirmed: metadata/classification. Proposed: controlled classifications and versioned typed metadata schemas; validate required fields, types, and allowed values on the server. Whether classification affects authorization or retention is open; do not equate descriptive labels with security clearance.
+CONFIRMED: configurable document types/fields (text, number, date, boolean, dropdown, multi-select, reference), required/validation/default/options/searchable settings, schema versions, logical classification/tags. PROPOSED: typed values/stable field IDs, additive/schema-impact review and explicit backfills; no silent corruption on type/option changes. Classification security/retention semantics OPEN; labels are not clearance by default.
 
 ### FR-05 — Search and indexing
 
-Confirmed: full-text search/indexing with PostgreSQL Full-Text Search as default, optional OpenSearch, and a search abstraction interface. Proposed: chunked text/tsvector projection, indexed metadata, authorization joins before ranking/snippets/counts, bounded pagination, and rebuild support. All returned information must obey live permissions. Latency, language configuration, ranking, and advanced features remain open.
+CONFIRMED: default PostgreSQL FTS, simple/advanced/filename/metadata/full-text/OCR search; repository/folder/type/category/tags/date/owner/processing filters; ranking/highlighting/pagination/saved searches and history where permitted; authorization on all metadata/aggregates. PROPOSED: SearchPort, bounded chunks/GIN, typed filter indexes, live policy joins, safe encoding/generation rebuild. See [Search/OCR/preview](SEARCH_OCR_PREVIEW.md); latency/relevance budgets OPEN, OpenSearch deferred.
 
 ### FR-06 — OCR
 
-Confirmed: local Tesseract OCR with no mandatory external API calls. Proposed: asynchronous page-aware extraction, bundled language data, engine/profile provenance, bounded execution, retries, and visible failure states. Formats, languages, handwriting expectations, and quality thresholds remain open. Baseline processors have no Internet dependency or egress.
+CONFIRMED: local asynchronous Tesseract Bahasa Melayu/English, native extraction/OCR where needed, thumbnails/previews/status/failure/retry, no repeated OCR for unchanged content/configuration, restricted tools/limits/scanning/no unauthorized network fetch. PROPOSED: checksum/profile generation reuse, pinned `msa`/`eng`, staged exact-byte scanning. Handwriting/quality/size limits OPEN.
 
 ### FR-07 — Preview
 
-Confirmed: local preview generation. Proposed: safe derived previews for an approved format list, per-request authorization and processing status, bundled renderers/fonts, and isolated processing. Never execute embedded scripts, fetch external document resources, or return unsafe originals inline. Fidelity, office formats, watermarking, and browser support are open.
+CONFIRMED: locally hosted secure PDF/JPEG/PNG/TIFF/DOCX/XLSX/PPTX priorities, zoom/pages/rotation where supported/fullscreen/info/permitted download, clear limitations and no cloud viewer. PROPOSED: safe generated derivatives, local office conversion, generation/freshness and every cache/range authorization. Exact fidelity/font/encrypted-format/size support OPEN and tested before claims.
 
 ### FR-08 — Versioning
 
-Confirmed: versioning. Proposed: immutable binary versions, checksum, uploader, timestamp, reason, and current-version pointer. Restore creates a new version rather than rewriting history. Whether metadata is versioned, checkout is required, and storage savings are acceptable is open.
+CONFIRMED: primarily Managed version ID/sequence/time/author/description/hash/storage/processing, history/download/restore-as-new-version/metadata comparison. Indexed external observations must not masquerade as controlled complete versions; optional snapshots explicitly labeled. PROPOSED: immutable accepted NAS snapshots and metadata revision history, physical working-tree integrity checks. Checkout/dedup not assumed.
 
 ### FR-09 — RBAC
 
@@ -65,15 +66,15 @@ Confirmed: RBAC. Proposed: permission-based roles plus repository/folder scope; 
 
 ### FR-10 — Audit and activity
 
-Confirmed: audit trails and activity logging. Proposed: actor, action, target, outcome, server time, request/trace ID, policy context, and appropriately redacted changes. Sensitive successful mutations are committed with their audit event; denied attempts and reads follow an explicit audit policy. Retention, evidence integrity, export format, and authorized viewers are open.
+CONFIRMED: login attempts/view/preview/download/upload/rename/move/delete/restore/metadata/permission/workflow/admin events, actor/action/target/time/outcome/request/context, protected evidence and no complete outside-NAS audit claim. PROPOSED: durable read/transfer intent plus outcome, atomic DB mutation audit/outbox, NAS operation ledger and append-only roles. Retention/privacy/evidence assurance OPEN; observed external actor stays unknown.
 
 ### FR-11 — Workflow and approval
 
-Confirmed: workflow/approval. Proposed: versioned definitions, assigned tasks, permitted state transitions, optimistic concurrency, and traceable decisions bound to a document version. Rejection, delegation, self-approval, notifications, escalation, and parallel steps require business definitions.
+CONFIRMED: configurable submit/review/approve/reject/return/reassign/comments/history/due dates/notifications; sequential/parallel where approved, decisions pinned to version or approved source state, stale prevention. PROPOSED: versioned definitions, expected task revisions, persistent in-app notifications, Indexed source revalidation. Quorum/assignments/self-approval/escalation OPEN; do not silently apply old approval to new bytes.
 
 ### FR-12 — Retention
 
-Confirmed: retention policies. Proposed: explicit start event, rule version, disposition review, hold overrides, dry-run reports, and controlled purge. No default retention period is assumed. Legal holds are a proposed safety control, not an assertion of a legal obligation.
+CONFIRMED: retention rules/start event/expiry/review/legal-administrative holds/reports, no automatic irreversible deletion without approved policies; Indexed sources never deleted and logical removal distinct. PROPOSED: report-only first, hold-serialized Managed purge/trash, retained disposition evidence. Durations/authority/precedence/backup expiry OPEN; no legal compliance claimed.
 
 ### FR-13 — REST API and integrations
 
@@ -81,15 +82,31 @@ Confirmed: REST API/integrations usable on the intranet without an IdP. Proposed
 
 ### FR-14 — Jobs and scheduling
 
-Confirmed: local background workers/scheduled jobs with no mandatory external API. Proposed: customer-local queue, durable PostgreSQL intent, idempotent execution, bounded retries, failure quarantine, cancellation, isolation, and replay. Queue age/backlog must be visible locally. Schedules/time zones need product agreement.
+CONFIRMED: local workers/schedules, persistent/resumable bounded indexing, pause/resume/cancel/retry/backoff/concurrency/throttling/admin controls/statistics/errors/freshness. PROPOSED: outbox/durable stage state, leases/fencing/generation idempotency, bounded local dispatch. Schedules/limits are configurable policies; see FR-17 and INDEXING_RECONCILIATION.md.
 
 ### FR-15 — Administration
 
-Confirmed: administration dashboard, health monitoring, system administration, and capacity planning. Proposed: local users/roles, optional directory configuration, repositories/connectors, schemas/workflows/policies, disk/inode/mount health, worker/search status, scan-signature age, backup/restore status, and audit review. Admin changes require authorization and audit; host administration is distinct from document access.
+CONFIRMED: guided web configuration without routine terminal use, storage/repository/users/roles/metadata/workflow/indexing/health/audit/settings, validation/defaults/security consequences; future installation/setup wizard. PROPOSED: secure host-installed gateway envelope and one-time admin bootstrap, local capacity/signature/certificate/backup dashboards, actionable errors. Privileged installation/disaster recovery remain explicit operator tasks.
 
 ### FR-16 — Enterprise security
 
 Confirmed: local authentication, secure password hashing/sessions, account lockout/rate limiting, RBAC, server-side authorization, path/share protection, isolated processing, and comprehensive audit. Proposed: Argon2id, secure opaque sessions, CSRF defense, customer-local TLS, quarantined scanning, local secret handling, and tested recovery. MFA is a proposed optional local TOTP control, not dependent on an IdP. Detailed controls are in [Authentication architecture](AUTHENTICATION_ARCHITECTURE.md).
+
+### FR-17 — Indexing and reconciliation
+
+CONFIRMED: full/incremental/scheduled scans, durable checkpoints/resume/retry/cancel/bounded concurrency/resource throttle/duplicate detection/stats/errors/freshness; new/modify/missing/rename where evidence supports/unavailable/reconnect, no outage deletion. States: discovered/pending/processing/indexed/failed/skipped/source unavailable, with separate source/job status. PROPOSED: streamed durable frontier, complete-scope missing evidence, corroborated rename, explicit ambiguous conflict, generation-fenced publication. See [Indexing](INDEXING_RECONCILIATION.md).
+
+### FR-18 — Stable identity and organization
+
+CONFIRMED: internal IDs not physical paths/NAS file IDs alone; repository/location/classification/metadata/checksum/size/mtime/discovery/index/source/processing tracking, documented safe reconciliation. Physical/virtual explorers, categories/subcategories/tags/types/custom metadata/saved views; logical organization without file moves. PROPOSED: observations/path history and separate virtual membership; no checksum-only identity merge or permission grant.
+
+### FR-19 — Enterprise UI and localization
+
+CONFIRMED: polished file-management experience, BM/English, coherent tokens/components, clean light default, accessible responsive desktop/tablet/mobile essentials; required Explorer/Viewer/Search/Upload/admin/indexing interactions and all screen states. PROPOSED: [UX/screen flows](UI_UX_SPECIFICATION.md), [design system](DESIGN_SYSTEM.md), WCAG 2.2 AA acceptance. No decorative CRUD dashboard/fabricated ETA/resume claims.
+
+### FR-20 — Personal discovery and notifications
+
+CONFIRMED: favorites/recent/relationships/saved views/searches/history where permitted, My Tasks and useful role-scoped dashboard/notifications. PROPOSED: per-user memberships/history with live authorization and bounded/privacy-controlled retention, persistent local in-app notifications. Search/user-history retention and delivery policy OPEN.
 
 ## Nonfunctional requirements
 
@@ -109,7 +126,7 @@ Confirmed: backup/restore architecture. Proposed: approve RPO/RTO, maintenance w
 
 ### NFR-04 — Performance and scalability
 
-Confirmed: storage capacity planning. Proposed: workload inventory and measured sizing for users, file/version count, reference snapshots, growth, OCR pages, query rate, scratch/quarantine, database/FTS/WAL, and backups. Track free bytes/inodes and refuse unsafe new ingestion before space exhaustion. Approve thresholds/targets; no server size or performance promise is assumed.
+CONFIRMED: **at least 1,000,000 distinct documents** design target, realistic benchmarks before claims, capacity planning/streaming/pagination/batching/checkpoints/resource limits. PROPOSED: mixed synthetic NAS/FTS/processing/concurrent-policy workload, measured CPU/RAM/IOPS/network/bytes/inodes/DB-WAL-FTS and recovery, no mandatory Indexed-original duplication. D-08/D-15 set hardware/latency/throughput budgets; no achieved result claimed.
 
 ### NFR-05 — Operability
 
@@ -117,7 +134,7 @@ Confirmed: health monitoring/system administration and no telemetry outside cust
 
 ### NFR-06 — Maintainability and delivery
 
-Strict TypeScript, modular boundaries, documented APIs, reproducible builds, reviewed migrations, automated tests, dependency/security checks, and backward-compatible releases. Accessibility target WCAG 2.2 AA is proposed; required languages/localization remain open.
+CONFIRMED: strict maintainable modular code/migrations/tests/contracts, BM/English and accessible responsive product. PROPOSED: pinned reproducible builds/license/SBOM gates, backward-compatible schema/releases and WCAG 2.2 AA verification; exact brand/browser/timezone/quantitative UX criteria OPEN.
 
 ### NFR-07 — Offline installation and operation
 
@@ -125,74 +142,4 @@ Confirmed: Docker Compose-based installation and full operation without public I
 
 ## Decision register
 
-Product direction is **confirmed** by the correction. Each decision distinguishes that fixed direction from open implementation details. Recommendations are not implementation approvals. Record later decisions/dates here and add ADRs for technical consequences.
-
-### D-01 — Installation and tenancy
-- Confirmed: on-premise customer-owned Ubuntu/Linux servers/VMs, private LAN, offline installation; not cloud-first SaaS.
-- Open: one customer organization per installation versus multiple internal organizations; supported Ubuntu releases/CPU architectures and HA topology.
-- Recommendation: one customer per isolated installation; explicit repository boundaries. Multiple internal organizations require a reviewed isolation model, not assumed SaaS tenancy.
-- Gate: data model and identity foundation.
-
-### D-02 — Identity and account lifecycle
-- Confirmed: local authentication default; secure hashing/sessions/lockout/rate limiting; LDAP/AD and OIDC optional; no required IdP/Keycloak.
-- Open: account identifiers, password/session/lockout settings, bootstrap/recovery operator, local MFA policy, directory mapping/deprovisioning latency, and enabled optional providers.
-- Recommendation: Argon2id using a maintained implementation, PostgreSQL-backed opaque sessions, audited local administration, and distinct local/directory identity sources with no automatic password fallback.
-- Gate: authentication implementation.
-
-### D-03 — Authorization semantics
-- Question: role catalog, folder inheritance, explicit denies, overrides, operator access, sharing, and move behavior?
-- Recommendation: scoped grants, deny by default, inherited permissions with no ad hoc public links. Explicit-deny semantics require separate approval; do not silently implement them.
-- Gate: repositories, search, and previews.
-
-### D-04 — Storage ownership and connector modes
-- Confirmed: local filesystem, NAS/SMB, NFS; S3 optional; managed and external-reference modes; reference sources never modified.
-- Open: actual mount roots/protocols, dedicated managed namespaces, snapshot duplication permission/retention, source change detection, and capacity.
-- Recommendation: managed local immutable blobs plus read-only references with immutable managed snapshots for version/scan integrity. Any prohibition on snapshot copies requires explicit limitations/resolution before claiming historical binary versioning.
-- Gate: uploads and connectors.
-
-### D-05 — Formats, OCR, preview, and classification
-- Confirmed: local Tesseract, local preview generation/workers, no mandatory external API calls.
-- Open: file types/limits, languages, confidential classes, rendering fidelity, bundled fonts, and offline scanner freshness policy.
-- Recommendation: allowlisted formats, local-only bounded processors, verified offline language/signature updates; validate PDF and common raster samples before committing format support.
-- Gate: ingestion acceptance and processing engines.
-
-### D-06 — Workflow policy
-- Question: approval steps, approver eligibility, separation of duties, parallelism, delegation, reminders, and changes during approval?
-- Recommendation: start with an explicitly defined sequential workflow pinned to a document version; no generic visual workflow designer initially.
-- Gate: workflow implementation.
-
-### D-07 — Retention, holds, and deletion
-- Question: legal basis, durations, start events, hold authority, purge approvals, backup expiry, storage locks, and audit retention?
-- Recommendation: report-only evaluation before enabling deletion; holds block purge; reconcile deletion across replicas, derivatives, indexes, and backups under an approved policy.
-- Gate: lifecycle implementation; destructive processing remains disabled meanwhile.
-
-### D-08 — Capacity, hosting, budget, and recovery
-- Confirmed: customer-owned physical/virtual servers, Docker Compose, offline installation, backup/restore, capacity and health administration.
-- Open: server/VM inventory, storage/network/IOPS, workload, HA, RPO/RTO, backup media/site, maintenance windows, and operations owner.
-- Recommendation: measured capacity model and separate-failure-domain backups; prove offline install/update/restore. A single server/VM is not HA; RAID and VM snapshots are not independent backups.
-- Gate: performance acceptance and deployment design.
-
-### D-09 — Security, audit, and compliance
-- Confirmed: secure defaults, server authorization, protected paths/shares, isolated processing, audit, and no outbound telemetry.
-- Open: customer/regulatory controls, local TLS/at-rest encryption/key recovery, audit readers/retention/evidence protection, scan freshness thresholds, and incident procedure.
-- Recommendation: ASVS-based review, local-only telemetry, append-only audit and separately protected customer-local evidence exports. No cloud dependency for security controls.
-- Gate: security acceptance and external integrations.
-
-### D-10 — First release and migration
-- Question: initial user journeys, source-data migration, coexistence with V1, localization, and accessibility obligations?
-- Recommendation: secure repository core first; include essential capability slices or explicitly defer them. No automatic access to or reuse of V1.
-- Gate: release scope and migration work.
-
-### D-11 — Technology and licensing
-- Confirmed: PostgreSQL FTS default with an interface, optional OpenSearch/S3/OIDC, local Tesseract, Docker Compose offline delivery.
-- Open: approve framework/ORM/queue choices, exact versions, processor licensing/distribution, and offline bundle maintenance/support.
-- Recommendation: modular TypeScript, PostgreSQL/Prisma with explicit SQL for FTS, local BullMQ/Valkey after compatibility testing, all baseline images/assets bundled; optional modules must not become transitive runtime requirements.
-- Gate: package manifests, images, and foundation implementation.
-
-## Approval record
-
-- Confirmed by Product Owner correction: on-premise/offline/local-auth/local-storage/PostgreSQL-FTS/local-processing baseline and optional integrations recorded above.
-- Historical action: initial documentation was committed/pushed with explicit approval; that approval does not authorize this revision's push.
-- Revised implementation proposal: awaiting review. No feature implementation, deployment, or new push is approved.
-
-A deferral must specify blocked work and its owner. Approval of product requirements is not approval to implement, deploy, or push.
+All D-01 through D-15 decisions/owners/gates/approval records are consolidated in [DECISION_REGISTER.md](DECISION_REGISTER.md). Historical D identifiers are preserved there. No duplicate policy register remains here.

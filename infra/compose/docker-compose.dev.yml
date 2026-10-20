@@ -1,0 +1,34 @@
+# Development dependencies only — API/web/worker run on the host via npm.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: intandmsv2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: intandms
+      POSTGRES_PASSWORD: intandms_dev_only
+      POSTGRES_DB: intandms
+    ports:
+      - "5436:5432"
+    volumes:
+      - intandmsv2-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intandms -d intandms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: intandmsv2-valkey
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  intandmsv2-pgdata:

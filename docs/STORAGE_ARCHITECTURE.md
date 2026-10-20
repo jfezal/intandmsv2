@@ -1,14 +1,14 @@
 # Storage architecture
 
-**Status:** on-premise proposal, 2026-10-08. Storage types/modes are confirmed; physical layout, durability settings, snapshot policy, and capacity targets require review.
+**Status:** master-aligned NAS-primary storage, 2026-10-08. Managed/Indexed behavior CONFIRMED; layout/durability/capacity PROPOSED/OPEN.
 
 ## 1. Confirmed requirements
 
-- Support local filesystem storage and customer NAS/SMB/NFS.
+- Originals remain on customer NAS: Synology/Windows/Samba SMB3 and Linux NFS. Local app filesystem supports configuration, processing, DB and derived assets; it is not mandatory original relocation.
 - S3-compatible storage is optional, not the default or installation prerequisite.
-- Support managed and external-reference modes.
-- External-reference mode must not modify source files.
-- Preserve document versioning, checksum/provenance, server-side access control, and audit integrity.
+- Support **Managed Repository** and **Indexed Repository** (canonical name for earlier external-reference mode).
+- Indexed originals remain in place/read-only, no forced migration or retained-original snapshots.
+- Managed controlled versioning and Indexed honest observation/freshness limitations; checksum/provenance/server policy/audit.
 - Operate without Internet/cloud dependencies; isolate processing and protect filesystem/share paths.
 
 “NAS” describes a storage appliance/location, not a protocol; SMB and NFS access must each be validated on the customer's configuration.
@@ -17,33 +17,33 @@
 
 ### Managed storage
 
-The DMS owns a **dedicated approved namespace** on local disk or a customer share, or optionally S3. Only DMS services/operators under policy write there. Uploads, imports, versions, derivatives, and reference snapshots use opaque internally generated blob IDs/paths. Files are immutable after publication; replacing bytes creates a new version/blob.
+The DMS controls a **dedicated approved namespace on customer NAS**. Proposed layout: physical working tree for actual current filenames/folders plus protected immutable accepted-version snapshots/staging/trash under a DMS control directory on the same NAS. Stable IDs map to both physical locations and retained versions. Immutable committed versions are content authority; working files are validated current presentation, not independent writable masters. Replacing accepted content creates a new version. D-04 reviews interoperability and copy overhead.
 
 Managed data may be changed/deleted only through approved lifecycle/recovery procedures. A “managed share” never grants the DMS write authority over unrelated customer files. Expose no public/static content directory and discourage direct user edits to managed roots.
 
-### External-reference storage
+### Indexed storage
 
-An external source remains under its owner's control. The connector reads/discovers it through read-only credentials and mounts, records provenance/change state, and maintains metadata inside the DMS.
+An existing source remains in its original location under its owner's control. The connector reads/discovers through read-only credentials/mounts, records observed provenance/change state, and maintains logical metadata inside the DMS. Indexed data adapters have no mutation methods. External direct access/audit is outside DMS control.
 
 **Prohibited on source roots:** file creation, overwrite, rename, move, deletion, chmod/chown, xattr/metadata writeback, thumbnails/sidecars, lock files, quarantine relocation, “repair,” or automatic folder creation. Derivatives, checkpoints, processing state, and snapshots live in DMS-managed storage, never beside source files. Use read-only/no-atime behavior where supported and validate protocol/client semantics; no client action may intentionally update source metadata.
 
 DMS permissions control DMS access, not direct user access to a source share. Share/OS ACL administration remains the customer's responsibility.
 
-## 3. External references and immutable versions
+## 3. Indexed observations and optional snapshots
 
 A pathname and timestamp are not historical binary versioning. Source owners can change/delete bytes, and timestamp resolution/change events are insufficient evidence of identity.
 
-**Proposed default: reference with immutable managed snapshots.**
+**Confirmed default: in-place read-only Indexed source, no retained original snapshot requirement.**
 
-1. Discover an allowlisted source entry and record source identity, relative path, size, and available change/version markers.
-2. Copy it read-only into DMS-owned quarantine; calculate hash/size over copied bytes. Check pre/post source markers and stable-read facilities available from the provider; retry/report changes during copy.
-3. Scan/process the captured bytes, not a later live read from the pathname. Publish immutable snapshot with provenance and a new logical version only after validation.
-4. Keep accepted historical snapshots according to approved policy. Source changes create new versions; missing/offline source changes status, not old history.
-5. Serve accepted versions/previews/search from the validated snapshot. A changed/unscanned live source is never silently substituted for an approved version.
+1. Discover approved entries and record stable internal ID plus source location/size/available markers.
+2. Read into bounded transient local staging for hashing/scanning/extraction/rendering; compare pre/post source evidence. This temporary job input is not document migration or guaranteed historical storage.
+3. Publish generation-tagged source observations/text/previews only if eligible; discard changed/stale results and retry/reconcile.
+4. Remove temporary originals according to bounded cleanup policy; optional retained source snapshots require explicit consent/retention/coverage and are off by default.
+5. Source changes append observations, not complete DMS-controlled versions. Missing/unavailable state preserves metadata/history and reports that old bytes may no longer be retrievable. Downloads verify current bytes against requested observation before response; cached previews/text carry freshness/eligibility.
 
 Where source locking/snapshot primitives are unavailable, a double-read/hash consistency check may improve detection but is not absolute proof against concurrent/adversarial mutation. Validate provider behavior and document residual risk; never claim atomic source snapshots merely from equal mtimes.
 
-Reference mode is still read-only: managed copies do not modify the source. **Open D-04:** customer permission to retain copies, eligible roots, snapshot frequency, retention, and required source consistency. If copies are prohibited, require verified source-native immutable version retrieval or resolve/document unavailable historical binary guarantees before enabling version-bound approvals. Metadata change history alone cannot satisfy immutable binary versioning.
+Indexed snapshots are an optional evidence feature, not a prerequisite for discovery/search. Their absence limits historical downloads/evidence reproduction; show that honestly. Indexed workflows may bind an approved observation/hash representation and revalidate it, never pretend external content is immutable. High-assurance workflow evidence can use Managed versions or consented snapshots. D-04/D-06/D-13 cover layout/evidence/freshness, centralized in DECISION_REGISTER.md.
 
 Source retention/backup belongs to the source owner. DMS retention applies to DMS snapshots/metadata/derivatives only; source deletion is never performed by a reference connector. Holds preserve eligible DMS snapshots but cannot stop independent source-owner edits without separate organizational controls.
 
@@ -52,10 +52,11 @@ Source retention/backup belongs to the source owner. DMS retention applies to DM
 Proposed core-owned ports, not implemented interfaces:
 
 - **ManagedBlobStore:** stage/stream writes with bounds, publish a blob without overwrite, stat/checksum/read range, health/capacity, and policy-authorized deletion. Operations use validated opaque handles, not arbitrary client paths.
-- **ReferenceSource:** list approved entries, obtain source identity/markers, open bounded read-only streams, verify stable capture where supported, and report health/checkpoints. It has **no write/delete/rename method**.
-- **SnapshotCaptureService:** coordinates source read, managed staging, verification, scan state, provenance, version publication, and reconciliation.
+- **IndexedSource:** list approved entries, obtain source evidence, bounded read-only streams and health/checkpoints; **no write/delete/rename method**.
+- **SourceObservationService:** coordinates transient staging/verification/generation publication/reconciliation; optional snapshot retention is explicit and separate.
+- **ManagedOperationService:** physical-tree operation ledger, NAS version publication, current presentation verification and recovery, preserving provider-specific semantics.
 
-Adapters: local filesystem, host-mounted SMB, host-mounted NFS, and optional S3. Capabilities/durability differ by adapter and must be exposed/tested explicitly; “implements the interface” is not proof of identical guarantees.
+Baseline adapters: approved SMB3/NFS mounts or restricted connector access; local app workspace for temporary/derived assets. Local-original and S3 extensions are not customer migration requirements or baseline acceptance blockers. Capabilities/durability differ and must be tested per provider.
 
 Separate reference and managed-root configuration/credentials. The same physical appliance can host both only with distinct namespaces and mount/access policies; reject overlaps and managed/quarantine/scratch roots inside a reference root.
 
@@ -70,15 +71,17 @@ Illustrative administrator-controlled Linux layout, **not created by this task**
   data/
     postgres/             # dedicated volume/local disk policy
     queue/                # local queue state, rebuildable from DB intent
-    managed/
-      originals/          # immutable blobs, including reference snapshots
-      derivatives/        # generation/version-scoped safe previews
+    derivatives/          # generation/version-scoped safe previews
+    optional-snapshots/   # only if Indexed retention consent/profile enables
     quarantine/           # exclusive staged uploads/captures
     scratch/              # bounded per-job local processing files
     logs/                 # local rotated redacted telemetry
 
-/mnt/intandms-managed/<approved-root>/  # dedicated DMS-owned share if enabled
-/mnt/intandms-reference/<source-id>/    # read-only approved customer sources
+/mnt/intandms-managed/<approved-root>/  # dedicated customer NAS namespace
+  current/                            # actual physical working tree
+  .intandms/versions/                  # immutable Managed accepted versions
+  .intandms/staging-or-trash/          # protected operation working/evidence
+/mnt/intandms-indexed/<source-id>/     # existing read-only customer folders
 
 Customer-controlled backup target on a separate failure domain/media
 ```
@@ -87,7 +90,7 @@ Use provider/root ID plus opaque relative blob identity in DB records; avoid emb
 
 ## 6. Filesystem and share security
 
-- Administrator approves roots/endpoints and creates required directories/mounts with dedicated service UID/GID and restrictive permissions; DMS never mounts arbitrary user-selected paths.
+- Admin web UI configures/tests/browses approved roots via restricted host gateway or preprovisioned mounts; host operator installs privilege/UID/GID/endpoint envelope once. No arbitrary user-selected host mounts. See NAS_CONNECTOR_ARCHITECTURE.md.
 - Reject absolute/relative traversal, separator tricks, NUL/invalid encoding, symlink/hardlink escape, mount changes, and overlapping roots. Canonicalization/string-prefix checks alone do not protect against TOCTOU.
 - Use safe descriptor-relative/exclusive/no-follow operations or a narrow audited helper where the Node API lacks required guarantees, combined with OS-level isolation. Review the actual implementation before claiming confinement.
 - Validate mount identity/filesystem/provider marker and access mode; reject missing/wrong/read-only/unhealthy managed mounts. Do not write into the local directory exposed when a network mount disappears. Revalidate during transfers and on reconnect.
@@ -105,7 +108,7 @@ For managed writes:
 1. Check permissions, limits, expected mount/space/inodes, and create an exclusive server-generated staging file.
 2. Stream with backpressure, enforce byte count, compute content hash, and handle cancellation/cleanup.
 3. Persist pending DB version/audit/outbox intent; scan before readability.
-4. Publish without overwriting an existing blob. Use same-filesystem atomic rename/exclusive semantics and appropriate file/directory fsync where supported; cross-filesystem movement requires copy/verify/durable publication, not an atomicity claim.
+4. Publish immutable NAS version without overwrite using validated exclusive/same-filesystem rename/fsync semantics. Coordinate physical working-tree update through durable operation state; concurrent direct NAS changes yield integrity/conflict evidence, not rewritten old hashes. Cross-filesystem copies require verify/durable publication, not an atomicity claim.
 5. Finalize accepted version/current pointer and audit in PostgreSQL; workers publish generation-tagged results idempotently.
 6. Reconcile crashes between file and DB transitions, abandoned staging, and orphaned files under grace periods with reference/hold checks.
 
@@ -120,25 +123,26 @@ Inventory actual file counts, size distribution, maximum file/page sizes, versio
 Proposed sizing model:
 
 ```text
-Managed content = retained uploaded/imported version bytes
-                + retained external-reference snapshot bytes
-Working data    = derivatives + quarantine + concurrent job scratch
+NAS data        = Managed current presentation + retained Managed version bytes
+                + approved managed staging/trash + existing Indexed originals
+App work/data   = derivatives + bounded quarantine/download/job scratch
+                + optional retained Indexed snapshot bytes
 Database        = metadata/RBAC/workflow/audit + extracted text/FTS indexes
                 + database maintenance/rebuild headroom + retained WAL
 Operations      = logs + queue state + release/upgrade staging
-Primary usable capacity >= Managed content + Working data + Database
-                         + Operations + approved safety/growth reserve
-Backup capacity >= retained full/incremental content + DB/WAL copies
+Capacity per target >= that target's NAS or App work/data + DB if placed there
+                     + Operations + approved safety/growth reserve
+Backup capacity >= retained Managed NAS/source-owner backup + DB/WAL copies
                  + configuration/audit/key archives + restore-test workspace
 ```
 
-Do not double-count the same managed snapshot as both upload and reference bytes. Source-original capacity is separate unless on the same physical appliance, where aggregate demand matters. RAID usable space, replicas, snapshots, backup targets, retention horizons, and deleted-but-open files affect physical capacity; logical byte totals are not raw-disk sizing.
+Size each actual placement separately. Indexed originals already exist and are not forcibly duplicated; optional retained snapshots add cost only if enabled. Managed current/immutable-history presentation overhead is explicit, not hidden dedup savings. NAS/app disks/RAID usable space/replicas/backups/retention affect physical demand; logical bytes are not raw-disk sizing.
 
 Bound scratch by concurrent jobs and worst-case decoded page/pixel/archive expansion, not just compressed upload size. Include full rebuild/backfill, backup staging, and maintenance overhead. Measure IOPS/share latency/bandwidth as well as space. Monitor bytes, inodes, quotas, mount health, and growth; warning/stop thresholds are D-08 policy. Stop/defer new ingestion before exhaustion while preserving login/admin/recovery headroom. Never evict originals/holds/audit automatically to free space.
 
 ## 9. Backup, restore, and administration
 
-Back up managed originals/reference snapshots together with a version/hash manifest and aligned PostgreSQL recovery point. Snapshot/backup derivatives if RTO needs it; otherwise rebuild. Reference-source owner backup is distinct and cannot substitute for DMS historical snapshots without verified version identity.
+Back up Managed NAS current/immutable versions and aligned DB/hash manifest. Optional retained Indexed snapshots and required derivatives have declared coverage. Existing Indexed original backup belongs to source owner; DMS DB/preview does not protect it or guarantee historical retrieval. See runbooks/BACKUP_RECOVERY.md.
 
 Restore under isolated traffic with workers/connectors/purge paused. Validate mount identities, root mapping, hashes, pending/accepted versions, holds/tombstones, and policy state before enabling access. Reconcile orphans conservatively; restore must not write to reference sources. See [On-premise deployment](ON_PREMISE_DEPLOYMENT.md).
 
@@ -146,7 +150,7 @@ Admin UI should show provider/mode, approved roots without secrets, capacity/hea
 
 ## 10. Acceptance evidence and open decisions
 
-Required tests: local/SMB/NFS read/write/durability matrix, read-only-source manifest preservation, source changes during capture, missing/wrong mount and reconnect, path/symlink escape, low bytes/inodes, interrupted publication, duplicate/concurrent versions, snapshot history after source deletion, hash mismatch, isolated restore, and reference purge never touching source.
+Required tests: SMB3/NFS platform capability/durability matrix, unchanged Indexed source manifests, optional snapshot/history coverage, source changes during transient read, ambiguous rename, mount races/reconnect/no fallback, low space/inodes, partial physical/DB operations, concurrent Managed versions, hash drift, aligned restore and Indexed purge never touching source.
 
 Optional S3 gets its own compatibility/security/recovery suite; its absence cannot block baseline installation. No adapter/file feature or test is implemented during this revision.
 

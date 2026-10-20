@@ -1,0 +1,21 @@
+{
+  "name": "@intandms/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@intandms/database": "*",
+    "@intandms/storage": "*",
+    "bullmq": "^5.58.0",
+    "ioredis": "^5.7.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
