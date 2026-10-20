@@ -32,12 +32,29 @@ export const changePasswordBodySchema = z.object({
   newPassword: password,
 });
 
-export const createGrantBodySchema = z.object({
-  userId: uuid,
-  roleId: uuid,
-  repositoryId: uuid,
-  folderId: uuid.nullable().optional(),
+export const createGrantBodySchema = z
+  .object({
+    userId: uuid.optional(),
+    departmentId: uuid.optional(),
+    roleId: uuid,
+    repositoryId: uuid,
+    folderId: uuid.nullable().optional(),
+  })
+  .refine((body) => Boolean(body.userId) !== Boolean(body.departmentId), 'Grant a user or a department, not both.');
+
+export const createDepartmentBodySchema = z.object({
+  name: z.string().trim().min(1).max(128),
+  description: z.string().trim().max(1000).optional(),
+  memberIds: z.array(uuid).max(200).default([]),
 });
+
+export const updateDepartmentBodySchema = z
+  .object({
+    name: z.string().trim().min(1).max(128).optional(),
+    description: z.string().trim().max(1000).nullable().optional(),
+    memberIds: z.array(uuid).max(200).optional(),
+  })
+  .refine((body) => body.name !== undefined || body.description !== undefined || body.memberIds !== undefined, 'Nothing to update.');
 
 export const roleBodySchema = z.object({
   key: z
@@ -56,5 +73,7 @@ export const updateRoleBodySchema = roleBodySchema.omit({ key: true });
 export type CreateUserBody = z.infer<typeof createUserBodySchema>;
 export type UpdateUserBody = z.infer<typeof updateUserBodySchema>;
 export type CreateGrantBody = z.infer<typeof createGrantBodySchema>;
+export type CreateDepartmentBody = z.infer<typeof createDepartmentBodySchema>;
+export type UpdateDepartmentBody = z.infer<typeof updateDepartmentBodySchema>;
 export type RoleBody = z.infer<typeof roleBodySchema>;
 export type UpdateRoleBody = z.infer<typeof updateRoleBodySchema>;

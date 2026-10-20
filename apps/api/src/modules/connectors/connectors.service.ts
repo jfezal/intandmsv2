@@ -1,10 +1,16 @@
 import path from 'node:path';
-import { access, realpath } from 'node:fs/promises';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CreateConnectorBody, UpdateConnectorBody } from '@intandms/contracts';
 import { PERMISSIONS } from '@intandms/core';
 import { createConnectorGatewayClient } from '@intandms/connector-gateway-client';
-import { findWorkspaceRoot, isWithinAllowedRoots, listContainedDirectories } from '@intandms/storage';
+import {
+  findWorkspaceRoot,
+  IndexedLocalPathError,
+  listContainedDirectories,
+  listHostDirectories,
+  resolveIndexedLocalDirectory,
+  type IndexedLocalPathCode,
+} from '@intandms/storage';
 import { forbidden } from '../../common/forbidden.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthPrincipal } from '../authorization/authorization.service';
@@ -12,14 +18,36 @@ import { AuthorizationService } from '../authorization/authorization.service';
 
 const BROWSABLE_STATES = new Set(['local_path', 'healthy', 'mounted']);
 
-/** Local connectors may only point inside these roots (`INDEXED_LOCAL_ROOTS`, comma separated). */
+/**
+ * Optional lockdown: when `INDEXED_LOCAL_ROOTS` is set, local connectors must stay inside those
+ * folders. When unset, an administrator picks any readable server folder from the UI.
+ */
 export function allowedLocalRoots(): string[] {
   const workspace = findWorkspaceRoot(process.cwd()) ?? process.cwd();
-  const configured = (process.env.INDEXED_LOCAL_ROOTS ?? './data/indexed')
+  const configured = (process.env.INDEXED_LOCAL_ROOTS ?? '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
   return configured.map((value) => path.resolve(workspace, value));
+}
+
+const LOCAL_PATH_MESSAGES: Record<IndexedLocalPathCode, string> = {
+  missing: 'Folder does not exist.',
+  not_directory: 'Path is not a folder.',
+  unreadable: 'The DMS process cannot read this folder. Check permissions on the server.',
+  outside_roots: 'This folder is outside the approved locations for this server.',
+  blocked: 'System folders cannot be indexed.',
+};
+
+async function requireLocalDirectory(candidate: string): Promise<string> {
+  try {
+    return await resolveIndexedLocalDirectory(candidate, allowedLocalRoots());
+  } catch (error) {
+    if (error instanceof IndexedLocalPathError) {
+      throw new BadRequestException(LOCAL_PATH_MESSAGES[error.code]);
+    }
+    throw error;
+  }
 }
 
 @Injectable()
@@ -76,6 +104,7 @@ export class ConnectorsService {
     return {
       gatewayConfigured: this.gatewayClient() !== null,
       localRoots: allowedLocalRoots(),
+      hostBrowseStart: allowedLocalRoots()[0] ?? '/',
       connectors: connectors.map((connector) => ({
         ...connector,
         repositoryCount: repositoriesByConnector.get(connector.id) ?? 0,
@@ -95,10 +124,7 @@ export class ConnectorsService {
       lastHealthNote: string;
     };
     if (input.protocol === 'local') {
-      if (!(await isWithinAllowedRoots(input.mountPath, allowedLocalRoots()))) {
-        throw new BadRequestException('Local path must exist inside an approved root (INDEXED_LOCAL_ROOTS).');
-      }
-      const mountPath = await realpath(path.resolve(input.mountPath));
+      const mountPath = await requireLocalDirectory(input.mountPath);
       data = {
         host: 'localhost',
         exportPath: mountPath,
@@ -205,15 +231,15 @@ export class ConnectorsService {
     if (connector.protocol === 'local') {
       let note = 'Local path reachable.';
       let ok = true;
-      if (!connector.mountPath || !(await isWithinAllowedRoots(connector.mountPath, allowedLocalRoots()))) {
+      if (!connector.mountPath) {
         ok = false;
-        note = 'Local path is outside the approved roots.';
+        note = 'Local path is not set.';
       } else {
         try {
-          await access(connector.mountPath);
-        } catch {
+          await requireLocalDirectory(connector.mountPath);
+        } catch (error) {
           ok = false;
-          note = 'Local path not reachable.';
+          note = error instanceof BadRequestException ? String(error.message) : 'Local path is not reachable.';
         }
       }
       return this.prisma.client.indexedConnector.update({
@@ -276,6 +302,21 @@ export class ConnectorsService {
 
   async healthCheck(principal: AuthPrincipal, connectorId: string) {
     return this.connectTest(principal, connectorId);
+  }
+
+  /** Lists host folders so an admin can pick a local indexed path from the UI. */
+  async browseHost(principal: AuthPrincipal, candidate: string | undefined) {
+    this.authz.assertPermission(principal, PERMISSIONS.CONNECTORS_MANAGE);
+    const roots = allowedLocalRoots();
+    const start = candidate?.trim() || roots[0] || '/';
+    try {
+      return await listHostDirectories(start, roots);
+    } catch (error) {
+      if (error instanceof IndexedLocalPathError) {
+        throw new BadRequestException(LOCAL_PATH_MESSAGES[error.code]);
+      }
+      throw error;
+    }
   }
 
   /** Lists sub-folders of a connector root so admins can pick a repository root. */

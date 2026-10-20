@@ -32,6 +32,23 @@
 - Topbar inbox: message icon with unread-conversation badge, dropdown of the 8 latest conversations, pop-up when another person's message arrives in a conversation that is not open, unread count in the browser tab title
 - Not yet covered: API integration tests for the two-user flow and non-member/non-auditor refusals (no API test harness yet)
 
+## Indexed upload (D-03 / D-04, uncommitted)
+
+- Product Owner: Google Drive-style Indexed sharing. Contributor (or admin) can create folders and upload **new** files onto the source. No overwrite, rename, move or delete from DMS.
+- Upload is scanned (ClamAV) in a temp file before exclusive-create on the source. `REQUIRE_CLAMAV=true` refuses skipped scans.
+- Explorer Upload / New folder follow `documents.write` and repository capabilities. Access grants still control who may do that.
+
+## Departments (D-03, uncommitted)
+
+- `departments` / `department_members`; scoped grants may target a user **or** a department
+- Members inherit department grants on the next request (explorer + search)
+- Admin UI: `#/admin/departments`; repository access panel can grant a department a Viewer/Contributor role
+
+## Local indexed folder picker (uncommitted)
+
+- `INDEXED_LOCAL_ROOTS` is optional. Unset: administrator picks any readable host folder from **Sambungan storan**. Set: picker stays inside those roots.
+- `GET /api/v1/connectors/browse-host` lists host subfolders (names of files are not returned). `/proc`, `/sys`, `/dev` are refused.
+
 ## Security fix (uncommitted)
 
 - CSRF: mutations now require the `X-CSRF-Token` header; the `intandms_csrf` cookie alone is refused (it is sent automatically on forged same-site requests). Signature check is constant-time. Unit test `apps/api/src/common/csrf.guard.test.ts`.

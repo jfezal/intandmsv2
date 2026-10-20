@@ -12,6 +12,7 @@ import {
   IconRefresh,
   IconSearch,
   IconUpload,
+  IconUsers,
 } from '../../components/icons';
 import { Alert, Badge, Button, EmptyState, IconButton, SkeletonRows } from '../../components/ui';
 import { api, type DocumentRow, type Folder, type MeUser, type Repository } from '../../lib/api';
@@ -45,10 +46,12 @@ export function ExplorerPage({
   const canWrite = locationAccess?.write ?? false;
   const traverseOnly = locationAccess !== null && !locationAccess.read;
   const canManageRepos = ['repositories.manage', 'system.admin'].some((key) => user.permissions.includes(key));
+  const canGrantAccess = ['users.manage', 'system.admin'].some((key) => user.permissions.includes(key));
 
   const repo = repositories?.find((candidate) => candidate.id === repositoryId) ?? null;
   const isManaged = repo?.type === 'MANAGED';
-  const canUpload = Boolean(repo && isManaged && canWrite && repo.capabilities.upload);
+  const canUpload = Boolean(repo && canWrite && repo.capabilities.upload);
+  const canCreateFolder = Boolean(repo && canWrite && repo.capabilities.physicalWrite);
   const folderKey = folderId ?? ROOT;
 
   const [children, setChildren] = useState<ChildMap>({});
@@ -392,7 +395,6 @@ export function ExplorerPage({
               <div className="explorer-title">
                 <h1>{currentFolderName}</h1>
                 <Badge tone={isManaged ? 'accent' : 'neutral'}>{isManaged ? t('managed') : t('indexed')}</Badge>
-                {!isManaged ? <Badge tone="warning" icon={<IconLock size={12} />}>{t('readOnly')}</Badge> : null}
               </div>
             </div>
 
@@ -415,9 +417,19 @@ export function ExplorerPage({
                     />
                   </>
                 ) : null}
-                {isManaged && canWrite ? (
+                {canCreateFolder ? (
                   <Button icon={<IconPlus size={16} />} onClick={() => setCreatingFolder((value) => !value)}>
                     {t('newFolder')}
+                  </Button>
+                ) : null}
+                {canGrantAccess && repositoryId ? (
+                  <Button
+                    icon={<IconUsers size={16} />}
+                    onClick={() =>
+                      navigate({ name: 'admin-repositories', repositoryId, tab: 'access' })
+                    }
+                  >
+                    {t('grantAccess')}
                   </Button>
                 ) : null}
                 <IconButton label={t('refresh')} onClick={() => void refresh()}>
@@ -463,7 +475,7 @@ export function ExplorerPage({
               </form>
             ) : null}
 
-            {!isManaged ? <Alert tone="info">{t('readOnlyReason')}</Alert> : null}
+            {!isManaged ? <Alert tone="info">{t('indexedWriteNotice')}</Alert> : null}
             {traverseOnly ? <Alert tone="info">{t('traverseOnlyNotice')}</Alert> : null}
 
             <div className="listing">
@@ -476,11 +488,29 @@ export function ExplorerPage({
                   <EmptyState
                     icon={<IconFolderOpen size={32} />}
                     title={t('emptyFolder')}
-                    hint={traverseOnly ? t('traverseOnlyEmpty') : !canWrite ? undefined : isManaged ? t('emptyFolderHintManaged') : t('emptyFolderHintIndexed')}
+                    hint={
+                      traverseOnly
+                        ? t('traverseOnlyEmpty')
+                        : canUpload
+                          ? t('emptyFolderHintManaged')
+                          : !isManaged
+                            ? t('emptyFolderHintIndexed')
+                            : undefined
+                    }
                     action={
                       canUpload ? (
                         <Button variant="primary" icon={<IconUpload size={16} />} onClick={() => fileInput.current?.click()}>
                           {t('uploadFiles')}
+                        </Button>
+                      ) : canGrantAccess && repositoryId ? (
+                        <Button
+                          variant="primary"
+                          icon={<IconUsers size={16} />}
+                          onClick={() =>
+                            navigate({ name: 'admin-repositories', repositoryId, tab: 'access' })
+                          }
+                        >
+                          {t('grantAccess')}
                         </Button>
                       ) : undefined
                     }

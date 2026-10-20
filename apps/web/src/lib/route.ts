@@ -7,9 +7,10 @@ export type Route =
   | { name: 'tasks'; taskId?: string }
   | { name: 'messages'; conversationId?: string }
   | { name: 'admin-users' }
+  | { name: 'admin-departments' }
   | { name: 'admin-messages' }
   | { name: 'admin-roles' }
-  | { name: 'admin-repositories' }
+  | { name: 'admin-repositories'; repositoryId?: string; tab?: 'overview' | 'settings' | 'access' }
   | { name: 'admin-connectors' }
   | { name: 'admin-audit' };
 
@@ -32,8 +33,16 @@ export function parseHash(hash: string): Route {
       return { name: 'messages', conversationId: segments[1] };
     case 'admin':
       if (segments[1] === 'messages') return { name: 'admin-messages' };
+      if (segments[1] === 'departments') return { name: 'admin-departments' };
       if (segments[1] === 'roles') return { name: 'admin-roles' };
-      if (segments[1] === 'repositories') return { name: 'admin-repositories' };
+      if (segments[1] === 'repositories') {
+        const tab = params.get('tab');
+        return {
+          name: 'admin-repositories',
+          repositoryId: params.get('id') ?? undefined,
+          tab: tab === 'overview' || tab === 'settings' || tab === 'access' ? tab : undefined,
+        };
+      }
       if (segments[1] === 'connectors' || segments[1] === 'storage') return { name: 'admin-connectors' };
       if (segments[1] === 'audit') return { name: 'admin-audit' };
       return { name: 'admin-users' };
@@ -58,10 +67,17 @@ export function href(route: Route): string {
       return '#/admin/messages';
     case 'admin-users':
       return '#/admin/users';
+    case 'admin-departments':
+      return '#/admin/departments';
     case 'admin-roles':
       return '#/admin/roles';
-    case 'admin-repositories':
-      return '#/admin/repositories';
+    case 'admin-repositories': {
+      const params = new URLSearchParams();
+      if (route.repositoryId) params.set('id', route.repositoryId);
+      if (route.tab) params.set('tab', route.tab);
+      const query = params.toString();
+      return query ? `#/admin/repositories?${query}` : '#/admin/repositories';
+    }
     case 'admin-connectors':
       return '#/admin/storage';
     case 'admin-audit':

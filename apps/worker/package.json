@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@intandms/core": "*",
     "@intandms/database": "*",
     "@intandms/processing": "*",
     "@intandms/storage": "*",

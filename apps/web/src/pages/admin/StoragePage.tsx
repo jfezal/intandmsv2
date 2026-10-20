@@ -143,6 +143,7 @@ export function StoragePage() {
         <ConnectorWizard
           gatewayConfigured={list.data.gatewayConfigured}
           localRoots={list.data.localRoots}
+          hostBrowseStart={list.data.hostBrowseStart ?? '/'}
           onClose={() => {
             setWizard(false);
             void list.reload();
@@ -246,16 +247,119 @@ export function DirectoryBrowser({
   );
 }
 
+/** Browses folders on the DMS host so an admin can pick a local indexed path. */
+function HostFolderPicker({
+  value,
+  onChange,
+  hint,
+}: {
+  value: string;
+  onChange: (path: string) => void;
+  hint: string;
+}) {
+  const { t } = useI18n();
+  const [current, setCurrent] = useState(value);
+  const [draft, setDraft] = useState(value);
+  const [listing, setListing] = useState<DirectoryListing | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setListing(null);
+    setError(null);
+    const query = current.trim() ? `?path=${encodeURIComponent(current.trim())}` : '';
+    api<DirectoryListing>(`/api/v1/connectors/browse-host${query}`)
+      .then((result) => {
+        if (!active) return;
+        setListing(result);
+        setDraft(result.path);
+        onChange(result.path);
+      })
+      .catch((browseError) => active && setError(errorText(browseError, t)));
+    return () => {
+      active = false;
+    };
+  }, [current, onChange, t]);
+
+  function go(next: string) {
+    const folder = next.trim();
+    if (!folder) return;
+    setCurrent(folder);
+  }
+
+  return (
+    <div className="dir-browser host-picker">
+      <Field label={t('localPath')} htmlFor="conn-path" hint={hint}>
+        <input
+          id="conn-path"
+          className="mono"
+          required
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => go(draft)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              go(draft);
+            }
+          }}
+        />
+      </Field>
+      <p className="hint">{t('hostPickerHint')}</p>
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+      {listing === null && !error ? (
+        <div className="dir-loading"><Spinner label={t('loading')} /></div>
+      ) : listing ? (
+        <>
+          <ul className="dir-list">
+            {listing.parent ? (
+              <li>
+                <button type="button" className="dir-row" onClick={() => go(listing.parent ?? '/')}>
+                  <IconArrowLeft size={16} />
+                  <span>{t('upOneLevel')}</span>
+                </button>
+              </li>
+            ) : null}
+            {listing.directories.map((directory) => (
+              <li key={directory.path}>
+                <button type="button" className="dir-row" onClick={() => go(directory.path)}>
+                  <IconFolder size={16} />
+                  <span>{directory.name}</span>
+                </button>
+              </li>
+            ))}
+            {listing.directories.length === 0 ? <li className="hint dir-empty">{t('noSubfolders')}</li> : null}
+          </ul>
+          <p className="hint">
+            {t('filesHere', { count: listing.fileCount })}
+            {listing.truncated ? ` · ${t('listingTruncated')}` : ''}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 type Protocol = 'local' | 'smb' | 'nfs';
 
-function ConnectorWizard({ gatewayConfigured, localRoots, onClose }: { gatewayConfigured: boolean; localRoots: string[]; onClose: () => void }) {
+function ConnectorWizard({
+  gatewayConfigured,
+  localRoots,
+  hostBrowseStart,
+  onClose,
+}: {
+  gatewayConfigured: boolean;
+  localRoots: string[];
+  hostBrowseStart: string;
+  onClose: () => void;
+}) {
   const { t } = useI18n();
   const [step, setStep] = useState(0);
   const [protocol, setProtocol] = useState<Protocol>('smb');
   const [name, setName] = useState('');
   const [host, setHost] = useState('');
   const [exportPath, setExportPath] = useState('');
-  const [mountPath, setMountPath] = useState(localRoots[0] ? `${localRoots[0]}/` : '');
+  const [mountPath, setMountPath] = useState(localRoots[0] ?? hostBrowseStart);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [connector, setConnector] = useState<Connector | null>(null);
@@ -336,10 +440,13 @@ function ConnectorWizard({ gatewayConfigured, localRoots, onClose }: { gatewayCo
             <input id="conn-name" required value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           {protocol === 'local' ? (
-            <Field label={t('localPath')} htmlFor="conn-path" hint={t('localPathHint', { roots: localRoots.join(', ') || '—' })}>
-              <input id="conn-path" className="mono" required value={mountPath} onChange={(event) => setMountPath(event.target.value)} />
-            </Field>
-          ) : (
+            <HostFolderPicker
+              value={mountPath}
+              onChange={setMountPath}
+              hint={localRoots.length ? t('localPathHint', { roots: localRoots.join(', ') }) : t('localPathHintOpen')}
+            />
+          ) : null}
+          {protocol !== 'local' ? (
             <div className="form-grid">
               <Field label={t('nasHost')} htmlFor="conn-host" hint={t('nasHostHint')}>
                 <input id="conn-host" className="mono" required value={host} onChange={(event) => setHost(event.target.value)} />
@@ -348,7 +455,7 @@ function ConnectorWizard({ gatewayConfigured, localRoots, onClose }: { gatewayCo
                 <input id="conn-export" className="mono" required value={exportPath} onChange={(event) => setExportPath(event.target.value)} />
               </Field>
             </div>
-          )}
+          ) : null}
           <Alert tone="info">{t('readOnlyConnectorNote')}</Alert>
         </form>
       ) : null}

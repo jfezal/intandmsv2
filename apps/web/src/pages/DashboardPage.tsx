@@ -96,7 +96,6 @@ export function DashboardPage({
                         <Badge tone={repo.type === 'MANAGED' ? 'accent' : 'neutral'}>
                           {repo.type === 'MANAGED' ? t('managed') : t('indexed')}
                         </Badge>
-                        {repo.type === 'INDEXED' ? <Badge tone="warning">{t('readOnly')}</Badge> : null}
                       </span>
                     </span>
                     <span className="repo-open">{t('openRepository')}</span>

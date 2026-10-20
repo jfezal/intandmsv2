@@ -41,6 +41,11 @@ export class ConnectorsController {
     await this.connectors.remove(request.user!, connectorId);
   }
 
+  @Get('browse-host')
+  browseHost(@Req() request: AuthenticatedRequest, @Query('path') folderPath?: string) {
+    return this.connectors.browseHost(request.user!, folderPath);
+  }
+
   @Get(':connectorId/browse')
   browse(
     @Req() request: AuthenticatedRequest,

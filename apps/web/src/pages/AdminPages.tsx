@@ -5,6 +5,7 @@ import { formatDateTime } from '../lib/format';
 import { useI18n } from '../i18n';
 import { LoadError, useLoad } from './admin/shared';
 
+export { DepartmentsPage } from './admin/DepartmentsPage';
 export { MessageInvestigationPage } from './admin/MessageInvestigationPage';
 export { RepositoriesPage } from './admin/RepositoriesPage';
 export { RolesPage } from './admin/RolesPage';

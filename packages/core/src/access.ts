@@ -1,4 +1,5 @@
 import { PERMISSIONS, isScopablePermission } from './permissions';
+import type { RepositoryType } from './repository-capabilities';
 
 export type AccessGrant = {
   id: string;
@@ -30,6 +31,7 @@ export function resolveEffectiveAccess(input: {
   grants: readonly AccessGrant[];
   repositoryId: string;
   folderAncestry: readonly string[];
+  repositoryType?: RepositoryType;
 }): EffectiveAccess {
   const sources: AccessSource[] = [];
   const isAdmin = input.globalPermissions.includes(PERMISSIONS.SYSTEM_ADMIN);

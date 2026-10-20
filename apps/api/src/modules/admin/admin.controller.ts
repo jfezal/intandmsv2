@@ -16,11 +16,13 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
+  createDepartmentBodySchema,
   createGrantBodySchema,
   createUserBodySchema,
   resetPasswordBodySchema,
   roleBodySchema,
   setUserRolesBodySchema,
+  updateDepartmentBodySchema,
   updateRoleBodySchema,
   updateUserBodySchema,
 } from '@intandms/contracts';
@@ -85,6 +87,34 @@ export class AdminController {
   @HttpCode(200)
   revokeSessions(@Req() request: AuthenticatedRequest, @Param('userId', ParseUUIDPipe) userId: string) {
     return this.admin.revokeSessions(request.user!, userId);
+  }
+
+  @Get('departments')
+  listDepartments(@Req() request: AuthenticatedRequest) {
+    return this.admin.listDepartments(request.user!);
+  }
+
+  @Post('departments')
+  createDepartment(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.admin.createDepartment(request.user!, parseBody(createDepartmentBodySchema, body));
+  }
+
+  @Patch('departments/:departmentId')
+  updateDepartment(
+    @Req() request: AuthenticatedRequest,
+    @Param('departmentId', ParseUUIDPipe) departmentId: string,
+    @Body() body: unknown,
+  ) {
+    return this.admin.updateDepartment(request.user!, departmentId, parseBody(updateDepartmentBodySchema, body));
+  }
+
+  @Delete('departments/:departmentId')
+  @HttpCode(204)
+  async deleteDepartment(
+    @Req() request: AuthenticatedRequest,
+    @Param('departmentId', ParseUUIDPipe) departmentId: string,
+  ) {
+    await this.admin.deleteDepartment(request.user!, departmentId);
   }
 
   @Get('grants')

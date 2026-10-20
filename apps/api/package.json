@@ -18,6 +18,7 @@
     "@intandms/core": "*",
     "@intandms/database": "*",
     "@intandms/identity": "*",
+    "@intandms/processing": "*",
     "@intandms/storage": "*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/config": "^4.0.0",

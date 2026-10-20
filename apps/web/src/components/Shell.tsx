@@ -82,6 +82,7 @@ export function Shell({
   const adminItems = (
     [
       { route: { name: 'admin-users' }, match: ['admin-users'], label: 'navUsers', icon: <IconUsers />, permission: 'users.manage' },
+      { route: { name: 'admin-departments' }, match: ['admin-departments'], label: 'navDepartments', icon: <IconUsers />, permission: 'users.manage' },
       { route: { name: 'admin-roles' }, match: ['admin-roles'], label: 'navRoles', icon: <IconLock />, permission: 'users.manage' },
       { route: { name: 'admin-repositories' }, match: ['admin-repositories'], label: 'navRepositories', icon: <IconDatabase />, permission: 'repositories.manage' },
       { route: { name: 'admin-connectors' }, match: ['admin-connectors'], label: 'navConnectors', icon: <IconServer />, permission: 'connectors.manage' },

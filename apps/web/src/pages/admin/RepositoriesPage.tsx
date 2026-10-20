@@ -3,7 +3,7 @@ import { IconDatabase, IconPlus, IconRefresh, IconX } from '../../components/ico
 import { Alert, Badge, Button, Card, EmptyState, IconButton, PageHeader, SkeletonRows } from '../../components/ui';
 import { api, type AdminUser, type ConnectorList, type Repository, type RepositoryAdmin, type RepositoryStatus, type Role } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
-import { href } from '../../lib/route';
+import { href, navigate, useRoute } from '../../lib/route';
 import { type MessageKey, type Translator, useI18n } from '../../i18n';
 import { AccessPanel } from './AccessPanel';
 import { Drawer, Field, LoadError, Modal, Steps, Tabs, useAction, useLoad } from './shared';
@@ -34,9 +34,11 @@ function StatusBadge({ status }: { status: RepositoryStatus }) {
 
 export function RepositoriesPage({ onRepositoriesChanged }: { onRepositoriesChanged: () => void }) {
   const { t } = useI18n();
+  const route = useRoute();
   const repositories = useLoad<Repository[]>('/api/v1/repositories');
   const [wizard, setWizard] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = route.name === 'admin-repositories' ? (route.repositoryId ?? null) : null;
+  const selectedTab = route.name === 'admin-repositories' ? route.tab : undefined;
 
   function changed() {
     void repositories.reload();
@@ -81,11 +83,11 @@ export function RepositoriesPage({ onRepositoriesChanged }: { onRepositoriesChan
                   <tr
                     key={repository.id}
                     tabIndex={0}
-                    onClick={() => setSelectedId(repository.id)}
+                    onClick={() => navigate({ name: 'admin-repositories', repositoryId: repository.id })}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        setSelectedId(repository.id);
+                        navigate({ name: 'admin-repositories', repositoryId: repository.id });
                       }
                     }}
                   >
@@ -114,11 +116,18 @@ export function RepositoriesPage({ onRepositoriesChanged }: { onRepositoriesChan
           onCreated={(id) => {
             setWizard(false);
             changed();
-            setSelectedId(id);
+            navigate({ name: 'admin-repositories', repositoryId: id });
           }}
         />
       ) : null}
-      {selectedId ? <RepositoryDrawer repositoryId={selectedId} onClose={() => setSelectedId(null)} onChanged={changed} /> : null}
+      {selectedId ? (
+        <RepositoryDrawer
+          repositoryId={selectedId}
+          initialTab={selectedTab}
+          onClose={() => navigate({ name: 'admin-repositories' })}
+          onChanged={changed}
+        />
+      ) : null}
     </div>
   );
 }
@@ -324,10 +333,23 @@ function RepositoryWizard({ onClose, onCreated }: { onClose: () => void; onCreat
 
 type RepoTab = 'overview' | 'settings' | 'access';
 
-function RepositoryDrawer({ repositoryId, onClose, onChanged }: { repositoryId: string; onClose: () => void; onChanged: () => void }) {
+function RepositoryDrawer({
+  repositoryId,
+  initialTab,
+  onClose,
+  onChanged,
+}: {
+  repositoryId: string;
+  initialTab?: RepoTab;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const { t } = useI18n();
   const detail = useLoad<RepositoryAdmin>(`/api/v1/repositories/${repositoryId}/admin`);
-  const [tab, setTab] = useState<RepoTab>('overview');
+  const [tab, setTab] = useState<RepoTab>(initialTab ?? 'overview');
+  useEffect(() => {
+    setTab(initialTab ?? 'overview');
+  }, [initialTab, repositoryId]);
   const repository = detail.data;
   const { reload } = detail;
   const scanStatus = repository?.scan?.status;
@@ -379,7 +401,11 @@ function RepositoryDrawer({ repositoryId, onClose, onChanged }: { repositoryId: 
               }}
             />
           ) : (
-            <AccessPanel mode={{ kind: 'repository', repositoryId: repository.id }} onChanged={() => void detail.reload()} />
+            <AccessPanel
+              mode={{ kind: 'repository', repositoryId: repository.id }}
+              repositoryType={repository.type}
+              onChanged={() => void detail.reload()}
+            />
           )}
         </>
       )}

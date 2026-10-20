@@ -53,7 +53,7 @@ export class DocumentsController {
         ? String(folderIdField.value)
         : undefined;
 
-    return this.documents.uploadManaged(request.user!, repositoryId, {
+    return this.documents.upload(request.user!, repositoryId, {
       folderId: folderId || undefined,
       displayName: file.filename,
       mimeType: file.mimetype || 'application/octet-stream',
@@ -79,7 +79,7 @@ export class DocumentDownloadController {
       'Content-Disposition',
       `attachment; filename="${payload.displayName.replace(/"/g, '')}"`,
     );
-    return payload.bytes;
+    return payload.body;
   }
 
   @Get(':documentId/preview')
@@ -90,6 +90,7 @@ export class DocumentDownloadController {
   ) {
     const payload = await this.documents.preview(request.user!, documentId);
     void reply.header('Content-Type', payload.mimeType);
-    return payload.bytes;
+    void reply.header('X-Content-Type-Options', 'nosniff');
+    return payload.body;
   }
 }

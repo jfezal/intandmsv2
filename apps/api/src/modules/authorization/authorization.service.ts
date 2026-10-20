@@ -80,14 +80,25 @@ export class AuthorizationService {
   }
 
   async loadGrants(userId: string): Promise<AccessGrant[]> {
+    const memberships = await this.prisma.client.departmentMember.findMany({
+      where: { userId },
+      select: { departmentId: true },
+    });
+    const departmentIds = memberships.map((row) => row.departmentId);
     const rows = await this.prisma.client.scopedRoleAssignment.findMany({
-      where: { userId, repositoryId: { not: null } },
-      include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+      where: {
+        repositoryId: { not: null },
+        OR: [{ userId }, ...(departmentIds.length ? [{ departmentId: { in: departmentIds } }] : [])],
+      },
+      include: {
+        role: { include: { rolePermissions: { include: { permission: true } } } },
+        department: { select: { name: true } },
+      },
     });
     return rows.map((row) => ({
       id: row.id,
       roleId: row.roleId,
-      roleName: row.role.displayName,
+      roleName: row.department ? `${row.role.displayName} (${row.department.name})` : row.role.displayName,
       repositoryId: row.repositoryId!,
       folderId: row.folderId,
       permissions: row.role.rolePermissions.map((rolePermission) => rolePermission.permission.key),
@@ -122,11 +133,16 @@ export class AuthorizationService {
   ): Promise<EffectiveAccess> {
     const ancestry = await this.folderAncestry(location.repositoryId, location.folderId);
     if (ancestry === null) return { permissions: [], sources: [] };
+    const repository = await this.prisma.client.repository.findUnique({
+      where: { id: location.repositoryId },
+      select: { type: true },
+    });
     return resolveEffectiveAccess({
       globalPermissions,
       grants,
       repositoryId: location.repositoryId,
       folderAncestry: ancestry,
+      repositoryType: repository?.type,
     });
   }
 

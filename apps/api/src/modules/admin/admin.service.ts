@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  CreateDepartmentBody,
   CreateGrantBody,
   CreateUserBody,
   RoleBody,
+  UpdateDepartmentBody,
   UpdateRoleBody,
   UpdateUserBody,
 } from '@intandms/contracts';
@@ -172,10 +174,18 @@ export class AdminService {
   async listGrants(principal: AuthPrincipal, filter: { userId?: string; repositoryId?: string }) {
     this.authz.assertPermission(principal, PERMISSIONS.USERS_MANAGE);
     const rows = await this.prisma.client.scopedRoleAssignment.findMany({
-      where: { userId: filter.userId, repositoryId: filter.repositoryId ?? { not: null } },
+      where: {
+        repositoryId: filter.repositoryId ?? { not: null },
+        ...(filter.userId
+          ? {
+              OR: [{ userId: filter.userId }, { department: { members: { some: { userId: filter.userId } } } }],
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         user: { select: { id: true, login: true, displayName: true, enabled: true } },
+        department: { select: { id: true, name: true } },
         role: { include: roleWithPermissions },
         repository: { select: { id: true, name: true, type: true, status: true } },
         folder: { select: { id: true, name: true, relativePath: true } },
@@ -185,6 +195,8 @@ export class AdminService {
       id: row.id,
       createdAt: row.createdAt,
       user: row.user,
+      department: row.department,
+      inherited: Boolean(filter.userId && row.departmentId && row.userId !== filter.userId),
       role: {
         id: row.role.id,
         key: row.role.key,
@@ -200,38 +212,42 @@ export class AdminService {
     this.authz.assertPermission(principal, PERMISSIONS.USERS_MANAGE);
     const folderId = input.folderId ?? null;
     await this.authz.assertGrantableRoles([input.roleId]);
-    const [user, repository, folder] = await Promise.all([
-      this.prisma.client.user.findUnique({ where: { id: input.userId } }),
+    const [user, department, repository, folder] = await Promise.all([
+      input.userId ? this.prisma.client.user.findUnique({ where: { id: input.userId } }) : Promise.resolve(null),
+      input.departmentId ? this.prisma.client.department.findUnique({ where: { id: input.departmentId } }) : Promise.resolve(null),
       this.prisma.client.repository.findUnique({ where: { id: input.repositoryId } }),
       folderId ? this.prisma.client.folder.findUnique({ where: { id: folderId } }) : Promise.resolve(null),
     ]);
-    if (!user) throw new NotFoundException('User not found.');
+    if (input.userId && !user) throw new NotFoundException('User not found.');
+    if (input.departmentId && !department) throw new NotFoundException('Department not found.');
     if (!repository) throw new NotFoundException('Repository not found.');
     if (folderId && (!folder || folder.repositoryId !== repository.id)) {
       throw new BadRequestException('Folder does not belong to this repository.');
     }
-    const role = { id: input.roleId };
 
     try {
       const grant = await this.prisma.client.scopedRoleAssignment.create({
         data: {
-          userId: user.id,
-          roleId: role.id,
+          userId: user?.id ?? null,
+          departmentId: department?.id ?? null,
+          roleId: input.roleId,
           repositoryId: repository.id,
           folderId,
           createdByUserId: principal.id,
         },
       });
-      await this.authz.writeAudit(principal, 'access.grant', 'user', user.id, 'success', {
+      const targetType = department ? 'department' : 'user';
+      const targetId = department?.id ?? user!.id;
+      await this.authz.writeAudit(principal, 'access.grant', targetType, targetId, 'success', {
         grantId: grant.id,
-        roleId: role.id,
+        roleId: input.roleId,
         repositoryId: repository.id,
         folderId,
       });
       return { id: grant.id };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('This user already has that role at this location.');
+        throw new ConflictException('That role is already granted at this location.');
       }
       throw error;
     }
@@ -242,13 +258,122 @@ export class AdminService {
     const grant = await this.prisma.client.scopedRoleAssignment.findUnique({ where: { id: grantId } });
     if (!grant) throw new NotFoundException('Grant not found.');
     await this.prisma.client.scopedRoleAssignment.delete({ where: { id: grantId } });
-    await this.authz.writeAudit(principal, 'access.revoke', 'user', grant.userId, 'success', {
-      grantId,
-      roleId: grant.roleId,
-      repositoryId: grant.repositoryId,
-      folderId: grant.folderId,
-    });
+    await this.authz.writeAudit(
+      principal,
+      'access.revoke',
+      grant.departmentId ? 'department' : 'user',
+      grant.departmentId ?? grant.userId!,
+      'success',
+      {
+        grantId,
+        roleId: grant.roleId,
+        repositoryId: grant.repositoryId,
+        folderId: grant.folderId,
+      },
+    );
     return { id: grantId };
+  }
+
+  /* ---------- Departments ---------- */
+
+  async listDepartments(principal: AuthPrincipal) {
+    this.authz.assertPermission(principal, PERMISSIONS.USERS_MANAGE);
+    const departments = await this.prisma.client.department.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        members: { include: { user: { select: { id: true, login: true, displayName: true, enabled: true } } } },
+        _count: { select: { grants: true } },
+      },
+    });
+    return departments.map((department) => ({
+      id: department.id,
+      name: department.name,
+      description: department.description,
+      createdAt: department.createdAt,
+      memberCount: department.members.length,
+      grantCount: department._count.grants,
+      members: department.members
+        .map((member) => member.user)
+        .sort((left, right) => left.displayName.localeCompare(right.displayName)),
+    }));
+  }
+
+  async createDepartment(principal: AuthPrincipal, input: CreateDepartmentBody) {
+    this.authz.assertPermission(principal, PERMISSIONS.USERS_MANAGE);
+    const memberIds = [...new Set(input.memberIds)];
+    if (memberIds.length) await this.assertUsersExist(memberIds);
+    try {
+      const department = await this.prisma.client.department.create({
+        data: {
+          name: input.name,
+          description: input.description || null,
+          members: { create: memberIds.map((userId) => ({ userId })) },
+        },
+      });
+      await this.authz.writeAudit(principal, 'department.create', 'department', department.id, 'success', {
+        memberCount: memberIds.length,
+      });
+      return { id: department.id };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A department with that name already exists.');
+      }
+      throw error;
+    }
+  }
+
+  async updateDepartment(principal: AuthPrincipal, departmentId: string, input: UpdateDepartmentBody) {
+    this.authz.assertPermission(principal, PERMISSIONS.USERS_MANAGE);
+    await this.requireDepartment(departmentId);
+    if (input.memberIds) await this.assertUsersExist([...new Set(input.memberIds)]);
+    try {
+      await this.prisma.client.$transaction(async (tx) => {
+        if (input.name !== undefined || input.description !== undefined) {
+          await tx.department.update({
+            where: { id: departmentId },
+            data: {
+              ...(input.name !== undefined ? { name: input.name } : {}),
+              ...(input.description !== undefined ? { description: input.description } : {}),
+            },
+          });
+        }
+        if (input.memberIds) {
+          const memberIds = [...new Set(input.memberIds)];
+          await tx.departmentMember.deleteMany({
+            where: { departmentId, userId: { notIn: memberIds } },
+          });
+          await tx.departmentMember.createMany({
+            data: memberIds.map((userId) => ({ departmentId, userId })),
+            skipDuplicates: true,
+          });
+        }
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A department with that name already exists.');
+      }
+      throw error;
+    }
+    await this.authz.writeAudit(principal, 'department.update', 'department', departmentId, 'success');
+    return { id: departmentId };
+  }
+
+  async deleteDepartment(principal: AuthPrincipal, departmentId: string) {
+    this.authz.assertPermission(principal, PERMISSIONS.USERS_MANAGE);
+    await this.requireDepartment(departmentId);
+    await this.prisma.client.department.delete({ where: { id: departmentId } });
+    await this.authz.writeAudit(principal, 'department.delete', 'department', departmentId, 'success');
+  }
+
+  private async requireDepartment(departmentId: string) {
+    const department = await this.prisma.client.department.findUnique({ where: { id: departmentId } });
+    if (!department) throw new NotFoundException('Department not found.');
+    return department;
+  }
+
+  private async assertUsersExist(userIds: string[]) {
+    const found = await this.prisma.client.user.count({ where: { id: { in: userIds } } });
+    if (found !== userIds.length) throw new NotFoundException('User not found.');
   }
 
   /** Admin preview of what a user can do at a location, with the reason for each permission. */

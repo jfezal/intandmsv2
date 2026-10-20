@@ -1,8 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CreateRepositoryBody, UpdateRepositoryBody } from '@intandms/contracts';
-import { PERMISSIONS, REPOSITORY_CAPABILITIES, type RepositoryType } from '@intandms/core';
-import { resolveContainedDirectory } from '@intandms/storage';
-import type { Prisma } from '@prisma/client';
+import {
+  PERMISSIONS,
+  REPOSITORY_CAPABILITIES,
+  UnusableSourceNameError,
+  assertUsableSourceName,
+  type RepositoryType,
+} from '@intandms/core';
+import { createContainedDirectory, resolveContainedDirectory } from '@intandms/storage';
+import { mapSourceWriteError, resolveIndexedScanRoot } from './indexed-root';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthPrincipal } from '../authorization/authorization.service';
 import { AuthorizationService } from '../authorization/authorization.service';
@@ -264,7 +271,7 @@ export class RepositoriesService {
     input: { name: string; parentId?: string },
   ) {
     await this.authz.assertCan(principal, PERMISSIONS.DOCUMENTS_WRITE, { repositoryId, folderId: input.parentId });
-    const repository = await this.requireManaged(repositoryId);
+    const repository = await this.requireWritableRepository(repositoryId);
     const parent = input.parentId
       ? await this.prisma.client.folder.findFirst({
           where: { id: input.parentId, repositoryId: repository.id },
@@ -273,19 +280,52 @@ export class RepositoriesService {
     if (input.parentId && !parent) {
       throw new NotFoundException('Parent folder not found.');
     }
+    if (parent?.sourceMissingAt) {
+      throw new BadRequestException('Parent folder is missing on the source.');
+    }
 
-    const relativePath = parent
-      ? `${parent.relativePath}/${input.name}`.replace(/\/+/g, '/')
-      : input.name;
+    let name = input.name.trim();
+    if (repository.type === 'INDEXED') {
+      try {
+        name = assertUsableSourceName(input.name, 'folder');
+      } catch (error) {
+        if (error instanceof UnusableSourceNameError) throw new BadRequestException(error.message);
+        throw error;
+      }
+    } else if (!name) {
+      throw new BadRequestException('Folder name is required.');
+    }
 
-    const folder = await this.prisma.client.folder.create({
-      data: {
-        repositoryId: repository.id,
-        parentId: parent?.id,
-        name: input.name,
-        relativePath,
-      },
-    });
+    const relativePath = parent ? `${parent.relativePath}/${name}`.replace(/\/+/g, '/') : name;
+    if (relativePath.length > 1024) {
+      throw new BadRequestException('That path is too long.');
+    }
+
+    if (repository.type === 'INDEXED') {
+      try {
+        const scanRoot = await resolveIndexedScanRoot(this.prisma.client, repository);
+        await createContainedDirectory(scanRoot, relativePath);
+      } catch (error) {
+        mapSourceWriteError(error);
+      }
+    }
+
+    let folder;
+    try {
+      folder = await this.prisma.client.folder.create({
+        data: {
+          repositoryId: repository.id,
+          parentId: parent?.id,
+          name,
+          relativePath,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A folder with that name already exists.');
+      }
+      throw error;
+    }
 
     await this.authz.writeAudit(
       principal,
@@ -315,7 +355,7 @@ export class RepositoriesService {
     const location = { repositoryId, folderId: parentId };
     const children = () =>
       this.prisma.client.folder.findMany({
-        where: { repositoryId, parentId: parentId ?? null },
+        where: { repositoryId, parentId: parentId ?? null, sourceMissingAt: null },
         orderBy: { name: 'asc' },
       });
 
@@ -350,13 +390,21 @@ export class RepositoriesService {
     return repository;
   }
 
-  private async requireManaged(repositoryId: string) {
+  private async requireWritableRepository(repositoryId: string) {
     const repository = await this.requireRepository(repositoryId);
-    if (repository.type !== 'MANAGED') {
-      throw forbidden('Managed repository required.');
-    }
     if (repository.status !== 'ACTIVE') {
       throw forbidden('Repository is not active.');
+    }
+    if (repository.type !== 'MANAGED' && repository.type !== 'INDEXED') {
+      throw forbidden('Repository does not allow creating folders.');
+    }
+    return repository;
+  }
+
+  private async requireManaged(repositoryId: string) {
+    const repository = await this.requireWritableRepository(repositoryId);
+    if (repository.type !== 'MANAGED') {
+      throw forbidden('Managed repository required.');
     }
     return repository;
   }

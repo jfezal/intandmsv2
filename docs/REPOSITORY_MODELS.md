@@ -18,9 +18,10 @@ Customers keep documents on their NAS/file servers. They are not required to mig
 
 ## Indexed Repository
 
-- Existing customer root, files stay in place; **read-only by default, no migration and no mandatory retained source snapshots**.
+- Existing customer root, files stay in place; no migration and no mandatory retained source snapshots.
 - Discover physical folders/files, extract metadata/text, OCR, index/search, preview/download, and DMS-only tags/classification/virtual organization.
-- No upload, physical rename/move/copy/delete, physical restore, or DMS-controlled version creation on that repository. A separately authorized explicit copy into a Managed Repository is an import/new document, not a source mutation.
+- **Sharing** is D-03 grants (user or department). Viewer may open, search and download. Contributor may also create folders and upload **new** files onto the source (exclusive create; no overwrite). Recipients do not need NAS Explorer access.
+- No physical rename/move/copy/delete, physical restore, or DMS-controlled version creation on that repository. A separately authorized explicit copy into a Managed Repository is an import/new document, not a source mutation.
 - Logical metadata updates are stored in PostgreSQL, not file metadata/sidecars. Logical hiding/removal affects DMS visibility only; explain that source bytes remain.
 - Track immutable **source observations** with size/hash/markers/times and current state. Observations are records of what was seen, not guaranteed recoverable file versions or a complete external audit.
 - Transient bounded local staging is allowed for scanning/OCR/rendering/verified download, deleted after the job/cache policy. Derived previews/text may be retained under policy; this does not imply retained original history.

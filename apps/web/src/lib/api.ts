@@ -115,10 +115,22 @@ export type PermissionInfo = { key: string; scope: 'global' | 'resource' | 'capa
 export type Grant = {
   id: string;
   createdAt: string;
-  user: { id: string; login: string; displayName: string; enabled: boolean };
+  user: { id: string; login: string; displayName: string; enabled: boolean } | null;
+  department: { id: string; name: string } | null;
+  inherited?: boolean;
   role: RoleRef & { permissions: string[] };
   repository: { id: string; name: string; type: Repository['type']; status: RepositoryStatus } | null;
   folder: { id: string; name: string; relativePath: string } | null;
+};
+
+export type Department = {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  memberCount: number;
+  grantCount: number;
+  members: Array<{ id: string; login: string; displayName: string; enabled: boolean }>;
 };
 
 export type AccessSource =
@@ -152,7 +164,12 @@ export type Connector = {
   browsable?: boolean;
 };
 
-export type ConnectorList = { gatewayConfigured: boolean; localRoots: string[]; connectors: Connector[] };
+export type ConnectorList = {
+  gatewayConfigured: boolean;
+  localRoots: string[];
+  hostBrowseStart?: string;
+  connectors: Connector[];
+};
 
 export type DirectoryListing = {
   path: string;

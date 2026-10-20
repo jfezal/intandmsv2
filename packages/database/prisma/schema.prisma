@@ -29,6 +29,7 @@ model User {
   sessions               Session[]
   userRoles              UserRole[]
   scopedRoleAssignments  ScopedRoleAssignment[]
+  departmentMembership   DepartmentMember[]
   authEvents             AuthEvent[]
   conversationsCreated   Conversation[]            @relation("ConversationCreator")
   conversationMembership ConversationParticipant[]
@@ -114,21 +115,50 @@ model UserRole {
   @@map("user_roles")
 }
 
+model Department {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(128)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members DepartmentMember[]
+  grants  ScopedRoleAssignment[]
+
+  @@map("departments")
+}
+
+model DepartmentMember {
+  departmentId String   @map("department_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([departmentId, userId])
+  @@index([userId])
+  @@map("department_members")
+}
+
 model ScopedRoleAssignment {
   id              String   @id @default(uuid()) @db.Uuid
-  userId          String   @map("user_id") @db.Uuid
+  userId          String?  @map("user_id") @db.Uuid
+  departmentId    String?  @map("department_id") @db.Uuid
   roleId          String   @map("role_id") @db.Uuid
   repositoryId    String?  @map("repository_id") @db.Uuid
   folderId        String?  @map("folder_id") @db.Uuid
   createdByUserId String?  @map("created_by_user_id") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
   repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   folder     Folder?     @relation(fields: [folderId], references: [id], onDelete: Cascade)
 
   @@index([userId, repositoryId])
+  @@index([departmentId, repositoryId])
   @@index([folderId])
   @@map("scoped_role_assignments")
 }
@@ -225,14 +255,16 @@ model Repository {
 }
 
 model Folder {
-  id           String   @id @default(uuid()) @db.Uuid
-  repositoryId String   @map("repository_id") @db.Uuid
-  parentId     String?  @map("parent_id") @db.Uuid
-  name         String   @db.VarChar(256)
-  relativePath String   @map("relative_path") @db.VarChar(1024)
-  revision     Int      @default(0)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String    @id @default(uuid()) @db.Uuid
+  repositoryId    String    @map("repository_id") @db.Uuid
+  parentId        String?   @map("parent_id") @db.Uuid
+  name            String    @db.VarChar(256)
+  relativePath    String    @map("relative_path") @db.VarChar(1024)
+  revision        Int       @default(0)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Indexed repositories: set while the directory is absent from the source; the folder and its grants are kept.
+  sourceMissingAt DateTime? @map("source_missing_at") @db.Timestamptz(6)
 
   repository            Repository             @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   parent                Folder?                @relation("FolderTree", fields: [parentId], references: [id])
@@ -257,6 +289,15 @@ model Document {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  /// Indexed repositories only: the file stays on the source. DMS may add new files; it does not overwrite or delete.
+  sourceRelativePath       String?   @map("source_relative_path") @db.VarChar(1024)
+  sourceSizeBytes          BigInt?   @map("source_size_bytes")
+  sourceModifiedAt         DateTime? @map("source_modified_at") @db.Timestamptz(6)
+  sourceMimeType           String?   @map("source_mime_type") @db.VarChar(128)
+  sourceScanStatus         String?   @map("source_scan_status") @db.VarChar(32)
+  /// size:mtime of the bytes the malware scan cleared; reads refuse a file that no longer matches.
+  sourceScannedFingerprint String?   @map("source_scanned_fingerprint") @db.VarChar(64)
+
   repository     Repository        @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   folder         Folder?           @relation(fields: [folderId], references: [id])
   versions       DocumentVersion[] @relation("DocumentVersions")
@@ -264,6 +305,7 @@ model Document {
   discussion     Conversation?
   messageLinks   MessageDocument[]
 
+  @@unique([repositoryId, sourceRelativePath])
   @@index([repositoryId, folderId])
   @@map("documents")
 }
@@ -356,14 +398,15 @@ model IndexedConnector {
 }
 
 model SourceObservation {
-  id             String   @id @default(uuid()) @db.Uuid
-  repositoryId   String   @map("repository_id") @db.Uuid
-  relativePath   String   @map("relative_path") @db.VarChar(1024)
-  sha256         String?  @db.VarChar(64)
-  sizeBytes      BigInt?  @map("size_bytes")
-  sourceState    String   @default("discovered") @map("source_state") @db.VarChar(32)
-  lastSeenAt     DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
-  scanGeneration Int      @default(0) @map("scan_generation")
+  id             String    @id @default(uuid()) @db.Uuid
+  repositoryId   String    @map("repository_id") @db.Uuid
+  relativePath   String    @map("relative_path") @db.VarChar(1024)
+  sha256         String?   @db.VarChar(64)
+  sizeBytes      BigInt?   @map("size_bytes")
+  modifiedAt     DateTime? @map("modified_at") @db.Timestamptz(6)
+  sourceState    String    @default("discovered") @map("source_state") @db.VarChar(32)
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  scanGeneration Int       @default(0) @map("scan_generation")
 
   repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 

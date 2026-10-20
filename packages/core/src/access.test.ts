@@ -25,6 +25,17 @@ describe('resolveEffectiveAccess', () => {
     expect(access.permissions).toEqual([]);
   });
 
+  it('applies a department-flattened grant like a direct user grant', () => {
+    const grants = [contributor('department-grant', null)];
+    const access = resolveEffectiveAccess({
+      globalPermissions: [],
+      grants,
+      repositoryId: REPO,
+      folderAncestry: ['child'],
+    });
+    expect(access.permissions).toEqual(expect.arrayContaining(['documents.read', 'documents.write']));
+  });
+
   it('applies repository grants to the root and every folder', () => {
     const grants = [viewer('g1', null)];
     expect(
@@ -78,5 +89,18 @@ describe('resolveEffectiveAccess', () => {
       resolveEffectiveAccess({ globalPermissions: ['system.admin'], grants: [], repositoryId: REPO, folderAncestry: [] })
         .permissions,
     ).toEqual(['documents.read', 'documents.write', 'search.query']);
+  });
+
+  it('honours documents.write on an indexed repository (DMS writes new files onto the source)', () => {
+    const grants = [contributor('g1', null)];
+    expect(
+      resolveEffectiveAccess({
+        globalPermissions: [],
+        grants,
+        repositoryId: REPO,
+        folderAncestry: ['child'],
+        repositoryType: 'INDEXED',
+      }).permissions,
+    ).toEqual(['documents.read', 'documents.write']);
   });
 });

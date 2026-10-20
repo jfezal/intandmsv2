@@ -16,8 +16,8 @@ export const REPOSITORY_CAPABILITIES: Record<
     sourceDiscovery: false,
   },
   INDEXED: {
-    physicalWrite: false,
-    upload: false,
+    physicalWrite: true,
+    upload: true,
     versionHistory: false,
     sourceDiscovery: true,
   },

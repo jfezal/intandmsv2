@@ -14,4 +14,15 @@ export {
   type EffectiveAccess,
 } from './access';
 export { REPOSITORY_CAPABILITIES, type RepositoryType } from './repository-capabilities';
+export {
+  UnusableSourceNameError,
+  assertUsableSourceName,
+  isIgnoredSourceName,
+  mimeTypeFromName,
+  planIndexedReconciliation,
+  sourceFingerprint,
+  type IndexedReconciliationPlan,
+  type ObservedSourceFile,
+  type ProjectedSourceDocument,
+} from './indexed-source';
 export { canEditMessage, directConversationKey, isActiveMember, type ConversationMembership } from './messaging';

@@ -25,13 +25,16 @@ One million documents is a required measured design target; priority preview for
 ## D-03 — Effective permissions
 
 - CONFIRMED: permissions not role names; repository/folder scope, backend service checks, group/revocation/move tests, no implicit NAS ACL synchronization.
+- CONFIRMED (Product Owner, 2026-10-20): departments (named staff groups) may receive the same scoped grants as a user. Membership is additive: every member inherits the department’s repository/folder role; search and explorer use the same effective permissions, so a file uploaded into a granted folder is visible in other members’ search. Direct user grants remain. This is a DMS department, not an LDAP/AD group mapping.
+- CONFIRMED (Product Owner, 2026-10-20): sharing is this grant path (user or department). Viewer: open, preview, download, search. Contributor: also create folders and upload new files (Managed storage or onto an Indexed source). Grants inherit down the folder tree.
 - PROPOSED: additive scoped grants inherited down physical folders, deny by default, no explicit-deny/document-override/public-share initially; virtual membership grants no access. Suggested role bundles are customizable. Broad ancestor grants cannot be revoked by a child under this simple model—make that visible.
 - OPEN: whether restricted children/explicit denies are necessary, role bundle authority, audit viewers, directory provisioning and break-glass policy.
 - Owner/gate: Product Owner/security, before permission migrations and repository features. Accept/revise one defined inheritance model rather than coding ambiguous precedence.
 
 ## D-04 — Managed NAS layout and source evidence
 
-- CONFIRMED: dedicated Managed NAS namespace, actual physical file operations and stable IDs; Indexed originals remain in place/read-only with no forced migration; versioning primarily Managed, Indexed history incomplete.
+- CONFIRMED: dedicated Managed NAS namespace, actual physical file operations and stable IDs; Indexed originals remain in place with no forced migration; versioning primarily Managed, Indexed history incomplete.
+- CONFIRMED (Product Owner, 2026-10-20, revised): Google Drive-style Indexed sharing. DMS may create folders and add **new** files onto the Indexed source when the caller has `documents.write`. Exclusive create only (no overwrite). No DMS rename, move, or delete on the source. Malware scan before a file is published onto the source. Connector must be mounted and writable. Files added outside DMS still appear after scan.
 - PROPOSED: Managed physical working tree plus controlled immutable accepted-version snapshots on the same customer NAS. Immutable committed version is content authority; physical working copy is validated current presentation, not a second independently writable master. Indexed bounded transient staging/derived data only, no retained-original snapshots by default.
 - OPEN: acceptable managed working-copy/version overhead, visibility/interoperability of current tree, required coherent-read assurance, optional Indexed snapshot consent/retention and source-native history.
 - Owner/gate: Product Owner/operations, before Managed storage publication; ordinary Indexed discovery is not blocked on optional snapshot consent.
@@ -88,6 +91,7 @@ One million documents is a required measured design target; priority preview for
 ## D-12 — Web-managed connector privilege boundary
 
 - CONFIRMED: UI add/test/credential validation/root browsing/select/health/update/disable, source credentials server-side, mount identity/no fallback/path escape.
+- CONFIRMED (Product Owner, 2026-10-20): a local indexed folder can be added from the DMS UI without listing it first in `INDEXED_LOCAL_ROOTS`. The path must exist, be a readable directory, and not be a kernel/virtual filesystem (`/proc`, `/sys`, `/dev`). Optional `INDEXED_LOCAL_ROOTS` still locks the picker to approved locations when operators set it.
 - PROPOSED: narrow authenticated host gateway with fixed allowlisted operations plus preprovisioned-mount mode; host installs privileged envelope once, routine admin via UI.
 - OPEN: customer-approved privilege/IPC/auth model, endpoint/root envelope, share ACL mappings and supported protocol/platform security settings.
 - Owner/gate: operations/security/technical lead, before connector gateway implementation and any real NAS access.
