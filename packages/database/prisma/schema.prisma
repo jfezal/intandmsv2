@@ -326,17 +326,20 @@ model SearchChunk {
 }
 
 model IndexedConnector {
-  id             String           @id @default(uuid()) @db.Uuid
-  name           String           @db.VarChar(256)
-  protocol       String           @db.VarChar(16)
-  host           String           @db.VarChar(256)
-  exportPath     String           @map("export_path") @db.VarChar(512)
-  mountPath      String?          @map("mount_path") @db.VarChar(512)
-  readOnly       Boolean          @default(true) @map("read_only")
-  status         RepositoryStatus @default(ACTIVE)
-  lastHealthAt   DateTime?        @map("last_health_at") @db.Timestamptz(6)
-  lastHealthNote String?          @map("last_health_note") @db.VarChar(512)
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String           @db.VarChar(256)
+  protocol        String           @db.VarChar(16)
+  host            String           @db.VarChar(256)
+  exportPath      String           @map("export_path") @db.VarChar(512)
+  mountPath       String?          @map("mount_path") @db.VarChar(512)
+  smbUsername     String?          @map("smb_username") @db.VarChar(256)
+  mountGeneration Int              @default(0) @map("mount_generation")
+  gatewayState    String           @default("unconfigured") @map("gateway_state") @db.VarChar(32)
+  readOnly        Boolean          @default(true) @map("read_only")
+  status          RepositoryStatus @default(ACTIVE)
+  lastHealthAt    DateTime?        @map("last_health_at") @db.Timestamptz(6)
+  lastHealthNote  String?          @map("last_health_note") @db.VarChar(512)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@map("indexed_connectors")
 }

@@ -53,11 +53,17 @@ export async function startOutboxDispatcher(): Promise<() => Promise<void>> {
               include: { storageObject: true },
             });
             if (version?.storageObject) {
+              const document = await db.document.findFirst({
+                where: { currentVersionId: version.id },
+                select: { displayName: true },
+              });
               await ensurePreviewArtifact(
                 db,
+                blobStore,
                 version.id,
                 payload.mimeType ?? version.mimeType,
                 version.storageObject.storageKey,
+                document?.displayName,
               );
             }
           }

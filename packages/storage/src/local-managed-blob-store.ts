@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, rename, stat } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -60,6 +60,18 @@ export class LocalManagedBlobStore {
 
   async readBytes(storageKey: string): Promise<Buffer> {
     return readFile(this.absolutePath(storageKey));
+  }
+
+  async writeBytes(storageKey: string, bytes: Buffer): Promise<void> {
+    const absolutePath = this.absolutePath(storageKey);
+    await mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, bytes, { flag: 'wx' }).catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EEXIST') {
+        await writeFile(absolutePath, bytes);
+        return;
+      }
+      throw error;
+    });
   }
 
   async statObject(storageKey: string): Promise<{ sizeBytes: number }> {

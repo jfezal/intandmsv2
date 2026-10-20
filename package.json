@@ -23,9 +23,12 @@
     "compose:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d",
     "compose:down": "docker compose -f infra/compose/docker-compose.dev.yml down",
     "test": "vitest run",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "dev:gateway": "npm run dev -w @intandms/connector-gateway",
     "bundle:offline": "bash scripts/build-offline-bundle.sh"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "vitest": "^3.2.0"
   }
 }

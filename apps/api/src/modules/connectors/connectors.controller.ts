@@ -20,6 +20,25 @@ export class ConnectorsController {
     return this.connectors.healthCheck(request.user!, connectorId);
   }
 
+  @Post(':connectorId/connect-test')
+  connectTest(@Req() request: AuthenticatedRequest, @Param('connectorId') connectorId: string) {
+    return this.connectors.connectTest(request.user!, connectorId);
+  }
+
+  @Post(':connectorId/credentials')
+  credentials(
+    @Req() request: AuthenticatedRequest,
+    @Param('connectorId') connectorId: string,
+    @Body() body: { username: string; password: string },
+  ) {
+    return this.connectors.setCredentials(request.user!, connectorId, body);
+  }
+
+  @Post(':connectorId/mount')
+  mount(@Req() request: AuthenticatedRequest, @Param('connectorId') connectorId: string) {
+    return this.connectors.applyMount(request.user!, connectorId);
+  }
+
   @Post()
   create(
     @Req() request: AuthenticatedRequest,
@@ -29,7 +48,8 @@ export class ConnectorsController {
       protocol: 'smb' | 'nfs' | 'local';
       host: string;
       exportPath: string;
-      mountPath: string;
+      mountPath?: string;
+      smbUsername?: string;
     },
   ) {
     return this.connectors.create(request.user!, body);

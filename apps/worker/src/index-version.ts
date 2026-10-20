@@ -1,6 +1,11 @@
 import type { PrismaClient } from '@prisma/client';
-import { extractIndexText, runTesseractOcr } from '@intandms/processing';
-import { LocalManagedBlobStore } from '@intandms/storage';
+import {
+  convertToPdfWithLibreOffice,
+  extractIndexText,
+  isLibreOfficePreviewTarget,
+  runTesseractOcr,
+} from '@intandms/processing';
+import type { LocalManagedBlobStore } from '@intandms/storage';
 
 export async function indexDocumentVersion(
   db: PrismaClient,
@@ -43,15 +48,47 @@ export async function indexDocumentVersion(
 
 export async function ensurePreviewArtifact(
   db: PrismaClient,
+  blobStore: LocalManagedBlobStore,
   versionId: string,
   mimeType: string,
   storageKey: string,
+  displayName?: string,
 ): Promise<void> {
-  const previewable =
+  const inlinePreviewable =
     mimeType.startsWith('image/') || mimeType === 'application/pdf' || mimeType.startsWith('text/');
-  if (!previewable) {
+
+  if (inlinePreviewable) {
+    await db.previewArtifact.upsert({
+      where: {
+        documentVersionId_kind: {
+          documentVersionId: versionId,
+          kind: 'inline',
+        },
+      },
+      create: {
+        documentVersionId: versionId,
+        kind: 'inline',
+        storageKey,
+        mimeType,
+      },
+      update: { storageKey, mimeType },
+    });
     return;
   }
+
+  if (!isLibreOfficePreviewTarget(mimeType, displayName)) {
+    return;
+  }
+
+  const sourcePath = blobStore.absolutePath(storageKey);
+  const converted = await convertToPdfWithLibreOffice(sourcePath);
+  if (!converted.ok) {
+    console.warn(`[preview] LibreOffice skipped for ${versionId}: ${converted.reason}`, converted.detail);
+    return;
+  }
+
+  const previewKey = `derivatives/previews/${versionId}.pdf`;
+  await blobStore.writeBytes(previewKey, converted.pdfBytes);
 
   await db.previewArtifact.upsert({
     where: {
@@ -63,9 +100,9 @@ export async function ensurePreviewArtifact(
     create: {
       documentVersionId: versionId,
       kind: 'inline',
-      storageKey,
-      mimeType,
+      storageKey: previewKey,
+      mimeType: 'application/pdf',
     },
-    update: { storageKey, mimeType },
+    update: { storageKey: previewKey, mimeType: 'application/pdf' },
   });
 }
