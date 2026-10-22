@@ -19,16 +19,19 @@ import {
   createDepartmentBodySchema,
   createGrantBodySchema,
   createUserBodySchema,
+  createWorkflowDefinitionBodySchema,
   resetPasswordBodySchema,
   roleBodySchema,
   setUserRolesBodySchema,
   updateDepartmentBodySchema,
   updateRoleBodySchema,
   updateUserBodySchema,
+  updateWorkflowDefinitionBodySchema,
 } from '@intandms/contracts';
 import { CsrfGuard } from '../../common/csrf.guard';
 import { parseBody } from '../../common/parse-body';
 import { AuthenticatedRequest, SessionAuthGuard } from '../auth/session-auth.guard';
+import { WorkflowService } from '../workflow/workflow.service';
 import { AdminService } from './admin.service';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,7 +46,10 @@ function optionalUuid(value: string | undefined, name: string): string | undefin
 @Controller('admin')
 @UseGuards(SessionAuthGuard, CsrfGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly workflow: WorkflowService,
+  ) {}
 
   @Get('users')
   listUsers(@Req() request: AuthenticatedRequest) {
@@ -183,5 +189,24 @@ export class AdminController {
   @Delete('roles/:roleId')
   deleteRole(@Req() request: AuthenticatedRequest, @Param('roleId', ParseUUIDPipe) roleId: string) {
     return this.admin.deleteRole(request.user!, roleId);
+  }
+
+  @Get('workflows')
+  listWorkflows(@Req() request: AuthenticatedRequest) {
+    return this.workflow.listAdmin(request.user!);
+  }
+
+  @Post('workflows')
+  createWorkflow(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.workflow.createDefinition(request.user!, parseBody(createWorkflowDefinitionBodySchema, body));
+  }
+
+  @Patch('workflows/:definitionId')
+  updateWorkflow(
+    @Req() request: AuthenticatedRequest,
+    @Param('definitionId', ParseUUIDPipe) definitionId: string,
+    @Body() body: unknown,
+  ) {
+    return this.workflow.updateDefinition(request.user!, definitionId, parseBody(updateWorkflowDefinitionBodySchema, body));
   }
 }

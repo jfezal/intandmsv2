@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react';
+import { BrandFooter } from '../components/BrandFooter';
 import { Alert, Button } from '../components/ui';
 import { IconEye, IconEyeOff, IconLock } from '../components/icons';
 import { type Locale, useI18n } from '../i18n';
@@ -37,17 +38,12 @@ export function LoginPage({
 
   return (
     <div className="login-screen">
-      <section className="login-aside" aria-hidden="true">
+      <section className="login-aside">
         <div className="brand brand-lg">
           <span className="brand-mark">i</span>
           <span className="brand-name">{t('appName')}</span>
         </div>
-        <p className="login-tagline">{t('appTagline')}</p>
-        <div className="login-illustration">
-          <div className="ill-card ill-a" />
-          <div className="ill-card ill-b" />
-          <div className="ill-card ill-c" />
-        </div>
+        <BrandFooter variant="hero" />
       </section>
 
       <section className="login-panel">
@@ -115,6 +111,7 @@ export function LoginPage({
             {busy ? t('signingIn') : t('signIn')}
           </Button>
         </form>
+        <BrandFooter />
       </section>
     </div>
   );

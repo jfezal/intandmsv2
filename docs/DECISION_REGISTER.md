@@ -49,9 +49,10 @@ One million documents is a required measured design target; priority preview for
 ## D-06 — Workflow business rules
 
 - CONFIRMED: submit/review/approve/reject/return/reassign/comments/history/due/notifications; sequential/parallel where approved, version/source-state target and stale prevention.
+- CONFIRMED (2026-10-21 Product Owner slice): admin-configured sequential templates; each step’s eligible pool is a named user, a role, or a department; the submitter picks one person per step from that pool; the submitter cannot review or approve their own document; approve opens the next step, reject ends the instance.
 - PROPOSED: versioned simple definition/state machine, persistent in-app notifications; Indexed decision revalidates observation/hash, blocks changed/unavailable source, high-assurance use prefers Managed/explicit snapshot evidence.
-- OPEN: approvers, self-approval/separation, parallel quorum, delegation/escalation, due-date rules, notification channels, approval-sensitive metadata and acceptable Indexed evidence guarantees.
-- Owner/gate: Product Owner/business records owner, before workflow rules; no invented approval sequence/quorum.
+- OPEN: parallel quorum, delegation/escalation, due-date rules, notification channels, return/reassign rules, approval-sensitive metadata and acceptable Indexed evidence guarantees.
+- Owner/gate: Product Owner/business records owner, before remaining workflow rules; no invented parallel quorum.
 
 ## D-07 — Retention, holds, disposition
 

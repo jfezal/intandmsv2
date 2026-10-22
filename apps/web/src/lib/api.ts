@@ -57,6 +57,44 @@ export type SearchHit = {
   matchedOn: Array<'name' | 'content'>;
 };
 
+export type WorkflowStepAssignee =
+  | { type: 'user'; userId: string }
+  | { type: 'role'; roleId: string }
+  | { type: 'department'; departmentId: string };
+
+export type WorkflowDefinitionBody = {
+  steps: Array<{ key: string; name: string; assignee: WorkflowStepAssignee }>;
+};
+
+export type AdminWorkflow = {
+  id: string;
+  key: string;
+  name: string;
+  version: number;
+  enabled: boolean;
+  definition: WorkflowDefinitionBody;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkflowDefinitionSummary = {
+  id: string;
+  key: string;
+  name: string;
+  version: number;
+  steps: Array<{ key: string; name: string }>;
+};
+
+export type WorkflowCandidates = {
+  definitionId: string;
+  name: string;
+  steps: Array<{
+    key: string;
+    name: string;
+    candidates: Array<{ id: string; login: string; displayName: string }>;
+  }>;
+};
+
 export type WorkflowTask = {
   id: string;
   stepKey: string;
@@ -68,6 +106,16 @@ export type WorkflowTask = {
     documentVersionId: string;
     status: string;
     definition: { key: string; name: string };
+    stepIndex: number;
+    stepCount: number;
+    history: Array<{
+      stepKey: string;
+      stepName: string;
+      decision: string | null;
+      comment: string | null;
+      completedAt: string | null;
+      assignee: { login: string; displayName: string } | null;
+    }>;
   };
   document: {
     id: string;

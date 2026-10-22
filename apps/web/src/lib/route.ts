@@ -10,6 +10,7 @@ export type Route =
   | { name: 'admin-departments' }
   | { name: 'admin-messages' }
   | { name: 'admin-roles' }
+  | { name: 'admin-workflows' }
   | { name: 'admin-repositories'; repositoryId?: string; tab?: 'overview' | 'settings' | 'access' }
   | { name: 'admin-connectors' }
   | { name: 'admin-audit' };
@@ -35,6 +36,7 @@ export function parseHash(hash: string): Route {
       if (segments[1] === 'messages') return { name: 'admin-messages' };
       if (segments[1] === 'departments') return { name: 'admin-departments' };
       if (segments[1] === 'roles') return { name: 'admin-roles' };
+      if (segments[1] === 'workflows') return { name: 'admin-workflows' };
       if (segments[1] === 'repositories') {
         const tab = params.get('tab');
         return {
@@ -71,6 +73,8 @@ export function href(route: Route): string {
       return '#/admin/departments';
     case 'admin-roles':
       return '#/admin/roles';
+    case 'admin-workflows':
+      return '#/admin/workflows';
     case 'admin-repositories': {
       const params = new URLSearchParams();
       if (route.repositoryId) params.set('id', route.repositoryId);

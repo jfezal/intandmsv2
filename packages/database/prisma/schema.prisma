@@ -438,8 +438,10 @@ model WorkflowDefinition {
   key        String   @unique @db.VarChar(64)
   name       String   @db.VarChar(256)
   version    Int      @default(1)
+  enabled    Boolean  @default(true)
   definition Json
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   instances WorkflowInstance[]
 
@@ -447,18 +449,21 @@ model WorkflowDefinition {
 }
 
 model WorkflowInstance {
-  id                String   @id @default(uuid()) @db.Uuid
-  definitionId      String   @map("definition_id") @db.Uuid
-  documentId        String   @map("document_id") @db.Uuid
-  documentVersionId String   @map("document_version_id") @db.Uuid
-  status            String   @default("in_progress") @db.VarChar(32)
-  createdByUserId   String   @map("created_by_user_id") @db.Uuid
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                  String   @id @default(uuid()) @db.Uuid
+  definitionId        String   @map("definition_id") @db.Uuid
+  documentId          String   @map("document_id") @db.Uuid
+  documentVersionId   String   @map("document_version_id") @db.Uuid
+  status              String   @default("in_progress") @db.VarChar(32)
+  createdByUserId     String   @map("created_by_user_id") @db.Uuid
+  definitionSnapshot  Json     @map("definition_snapshot")
+  assignees           Json
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   definition WorkflowDefinition @relation(fields: [definitionId], references: [id])
   tasks      WorkflowTask[]
 
   @@index([documentId])
+  @@index([documentId, status])
   @@map("workflow_instances")
 }
 

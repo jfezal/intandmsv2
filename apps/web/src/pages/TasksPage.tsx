@@ -210,7 +210,9 @@ function TaskDetail({
       <header className="task-detail-head">
         <FileIcon kind={fileKind(undefined, document?.displayName ?? '')} size={44} />
         <div className="task-head-body">
-          <span className="task-step muted small">{stepLabel(task.stepKey)}</span>
+          <span className="task-step muted small">
+            {task.instance.definition.name} · {t('taskStepOf', { n: (task.instance.stepIndex ?? 0) + 1, total: task.instance.stepCount || 1 })}
+          </span>
           <h2 id="task-detail-title" ref={headingRef} tabIndex={-1}>
             {document?.displayName ?? t('taskDocumentMissing')}
           </h2>
@@ -256,6 +258,10 @@ function TaskDetail({
                 <dt>{t('taskColType')}</dt>
                 <dd>{stepLabel(task.stepKey)}</dd>
               </div>
+              <div>
+                <dt>{t('workflowName')}</dt>
+                <dd>{task.instance.definition.name}</dd>
+              </div>
               {document ? (
                 <div>
                   <dt>{t('repositories')}</dt>
@@ -275,6 +281,26 @@ function TaskDetail({
                 <dd>{task.dueAt ? formatDateTime(task.dueAt, locale) : '—'}</dd>
               </div>
             </dl>
+          </section>
+
+          <section className="card">
+            <div className="card-head"><h2>{t('taskHistoryHeading')}</h2></div>
+            {task.instance.history?.length ? (
+              <ol className="workflow-history">
+                {task.instance.history.map((item) => (
+                  <li key={item.stepKey}>
+                    <strong>{item.stepName}</strong>
+                    <span className="muted small">
+                      {item.decision === 'approve' ? t('approve') : item.decision === 'reject' ? t('reject') : item.decision}
+                      {item.assignee ? ` · ${item.assignee.displayName}` : ''}
+                    </span>
+                    {item.comment ? <p className="hint">{item.comment}</p> : null}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="muted small">{t('taskHistoryEmpty')}</p>
+            )}
           </section>
 
           <section className="card task-decision">

@@ -9,6 +9,7 @@ export { DepartmentsPage } from './admin/DepartmentsPage';
 export { MessageInvestigationPage } from './admin/MessageInvestigationPage';
 export { RepositoriesPage } from './admin/RepositoriesPage';
 export { RolesPage } from './admin/RolesPage';
+export { WorkflowsPage } from './admin/WorkflowsPage';
 export { StoragePage } from './admin/StoragePage';
 export { UsersPage } from './admin/UsersPage';
 

@@ -1,6 +1,6 @@
 # Implementation status
 
-**Updated:** 2026-10-20
+**Updated:** 2026-10-21
 
 ## Push / repo
 
@@ -11,7 +11,7 @@
 - Auth, CSRF, Valkey-backed login rate limits (fallback memory)
 - Scoped RBAC, quarantine upload, ClamAV hook (`clamscan`, `REQUIRE_CLAMAV` for strict prod)
 - Worker: publish, FTS index, preview artifacts, indexed read-only scan
-- Workflow tasks, retention report/holds, audit/admin/connectors health
+- Workflow tasks (admin sequential templates; no self-approval), retention report/holds, audit/admin/connectors health
 - Web: BM/EN labels, explorer, search, workflow task list
 - OCR: **implemented but off by default** (`OCR_ENABLED=true` + Tesseract)
 - Offline bundle script: `npm run bundle:offline` (stages images + compose; sign manifest operationally)
@@ -23,14 +23,21 @@
 - API: `POST /connectors/:id/credentials`, `connect-test`, `mount` (forwards to gateway; passwords never stored in DB)
 - **Playwright** smoke: `npm run test:e2e` (login UI; optional API health when stack up)
 
-## Internal messaging (D-16, uncommitted)
+## Internal messaging (D-16)
 
 - Migration `20261020170000_messaging`: conversations, participants, messages, revisions, document links; triggers block message deletion and revision changes; `messages.audit` granted to the `auditor` role
 - API `/api/v1/messages/*`: user directory, direct/group/document conversations, send/edit/read, unread summary, `GET /messages/stream` (SSE, ids only, session re-checked every heartbeat, max 5 streams/user, Valkey channel `intandms:messages` or in-memory)
 - Investigation: `/messages/investigation/*?reason=` (reason 5–500 chars, audited `messages.investigate_list` / `messages.investigate_read`)
 - Web: `#/messages`, document discussion and "Share" in the explorer details panel, `#/admin/messages` (investigation)
 - Topbar inbox: message icon with unread-conversation badge, dropdown of the 8 latest conversations, pop-up when another person's message arrives in a conversation that is not open, unread count in the browser tab title
-- Not yet covered: API integration tests for the two-user flow and non-member/non-auditor refusals (no API test harness yet)
+- Playwright two-user suite `e2e/messages-two-user.spec.ts`: admin↔staff send/receive; non-member 404 after group removal; staff without `messages.audit` gets 403 on investigation; staff cannot list admin users; document links the staff cannot read return `{ id: null, available: false }`; UI hides Message investigation / Users for staff. Requires `E2E_ADMIN_PASSWORD` and `E2E_STAFF_PASSWORD`.
+
+## Review flows (D-06)
+
+- Admin `#/admin/workflows` (`users.manage`): sequential templates; each step eligible pool is a user, role or department.
+- Send for review picks a template and one person per step. Submitter cannot be a reviewer. Snapshot on the instance so later template edits do not change in-flight reviews.
+- Approve opens the next step; reject ends the instance. One `in_progress` review per document.
+- Playwright `e2e/workflow-two-user.spec.ts` (same `E2E_*` credentials as messaging).
 
 ## Indexed upload (D-03 / D-04, uncommitted)
 

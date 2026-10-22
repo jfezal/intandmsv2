@@ -26,3 +26,14 @@ export {
   type ProjectedSourceDocument,
 } from './indexed-source';
 export { canEditMessage, directConversationKey, isActiveMember, type ConversationMembership } from './messaging';
+export {
+  WorkflowAssignmentError,
+  assigneesForSteps,
+  filterEligibleReviewers,
+  nextStepAfterDecision,
+  stepByKey,
+  type WorkflowCandidate,
+  type WorkflowDefinitionSnapshot,
+  type WorkflowStep,
+  type WorkflowStepAssignee,
+} from './workflow';

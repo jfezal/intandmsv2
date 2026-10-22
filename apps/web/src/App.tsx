@@ -12,7 +12,7 @@ import {
   type WorkflowTask,
 } from './lib/api';
 import { useRoute } from './lib/route';
-import { AuditPage, DepartmentsPage, MessageInvestigationPage, RepositoriesPage, RolesPage, StoragePage, UsersPage } from './pages/AdminPages';
+import { AuditPage, DepartmentsPage, MessageInvestigationPage, RepositoriesPage, RolesPage, StoragePage, UsersPage, WorkflowsPage } from './pages/AdminPages';
 import { MessagesPage } from './pages/messages/MessagesPage';
 import { useMessageStream } from './lib/messageStream';
 import { InboxMenu, InboxToast, useInbox } from './pages/messages/InboxMenu';
@@ -197,6 +197,9 @@ export function App(): React.ReactElement {
         break;
       case 'admin-roles':
         page = <RolesPage />;
+        break;
+      case 'admin-workflows':
+        page = <WorkflowsPage />;
         break;
       case 'admin-repositories':
         page = <RepositoriesPage onRepositoriesChanged={() => void loadRepositories()} />;

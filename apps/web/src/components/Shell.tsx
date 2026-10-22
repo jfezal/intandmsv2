@@ -16,6 +16,7 @@ import {
   IconTasks,
   IconUsers,
 } from './icons';
+import { BrandFooter } from './BrandFooter';
 import { IconButton } from './ui';
 
 type NavItem = {
@@ -84,6 +85,7 @@ export function Shell({
       { route: { name: 'admin-users' }, match: ['admin-users'], label: 'navUsers', icon: <IconUsers />, permission: 'users.manage' },
       { route: { name: 'admin-departments' }, match: ['admin-departments'], label: 'navDepartments', icon: <IconUsers />, permission: 'users.manage' },
       { route: { name: 'admin-roles' }, match: ['admin-roles'], label: 'navRoles', icon: <IconLock />, permission: 'users.manage' },
+      { route: { name: 'admin-workflows' }, match: ['admin-workflows'], label: 'navWorkflows', icon: <IconTasks />, permission: 'users.manage' },
       { route: { name: 'admin-repositories' }, match: ['admin-repositories'], label: 'navRepositories', icon: <IconDatabase />, permission: 'repositories.manage' },
       { route: { name: 'admin-connectors' }, match: ['admin-connectors'], label: 'navConnectors', icon: <IconServer />, permission: 'connectors.manage' },
       { route: { name: 'admin-audit' }, match: ['admin-audit'], label: 'navAudit', icon: <IconShield />, permission: 'audit.read' },
@@ -190,6 +192,7 @@ export function Shell({
         <main id="main" className="content" tabIndex={-1}>
           {children}
         </main>
+        <BrandFooter />
       </div>
     </div>
   );

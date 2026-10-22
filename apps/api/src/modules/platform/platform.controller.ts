@@ -15,14 +15,6 @@ export class PlatformController {
     private readonly authz: AuthorizationService,
   ) {}
 
-  @Get('workflows/definitions')
-  listWorkflows(@Req() request: AuthenticatedRequest) {
-    if (!this.authz.hasPermission(request.user!, PERMISSIONS.SYSTEM_ADMIN)) {
-      throw forbidden();
-    }
-    return this.prisma.client.workflowDefinition.findMany({ orderBy: { key: 'asc' } });
-  }
-
   @Get('retention/policies')
   listRetention(@Req() request: AuthenticatedRequest) {
     if (!this.authz.hasPermission(request.user!, PERMISSIONS.SYSTEM_ADMIN)) {
